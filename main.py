@@ -67,17 +67,21 @@ EXCEL_HEADERS: List[str] = [
     "(infCteComp)", "infCteComp_chCTe"
 ]
 
-# List of columns that require explicit mapping (handled manually)
-ICMS_COLUMNS = [
-    "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS", "imp_vBCSTRet", 
-    "imp_vICMSSTRet", "imp_pICMSSTRet", "imp_ICMSOutraUF_CST", 
-    "imp_ICMSOutraUF_vBCOutraUF", "imp_ICMSOutraUF_pICMSOutraUF", 
-    "imp_ICMSOutraUF_vICMSOutraUF"
-]
+# Columns handled exclusively by the ICMS routing block — MUST be skipped in the dynamic loop
+# Using a set for O(1) lookup performance
+ICMS_COLUMNS: set = {
+    "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS",
+    "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
+    "imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF",
+    "imp_ICMSOutraUF_pICMSOutraUF", "imp_ICMSOutraUF_vICMSOutraUF",
+}
+
+MANUAL_COLUMNS: set = {"chv_cte_Id", "vPrest_xNome", "vPrest_vComp"}
 
 
 class ArchiveHandler:
     """Handles extraction of .rar and .zip archives."""
+
     def __init__(self, archive_path: str):
         if not os.path.exists(archive_path):
             raise FileNotFoundError(f"Archive not found at: {archive_path}")
@@ -91,7 +95,6 @@ class ArchiveHandler:
                 for file in files:
                     file_path = os.path.join(root, file)
                     extract_path = os.path.dirname(file_path)
-                    
                     try:
                         if file.lower().endswith(".rar"):
                             with rarfile.RarFile(file_path) as rf:
@@ -103,9 +106,8 @@ class ArchiveHandler:
                                 zf.extractall(path=extract_path)
                             os.remove(file_path)
                             archives_found = True
-                    except Exception as e:
+                    except Exception:
                         os.rename(file_path, file_path + ".failed")
-            
             if not archives_found:
                 break
 
@@ -117,7 +119,9 @@ class ArchiveHandler:
             print("Scanning for nested archives...")
             self._extract_recursive()
         except rarfile.Error as e:
-            raise RuntimeError(f"Failed to extract RAR file. Ensure 'unrar' is installed. Details: {e}")
+            raise RuntimeError(
+                f"Failed to extract RAR file. Ensure 'unrar' is installed. Details: {e}"
+            )
 
     def find_xml_files(self) -> List[str]:
         xml_files = []
@@ -136,119 +140,167 @@ class ArchiveHandler:
 
 
 class XMLParser:
-    """Parses CT-e XML, handling namespaces, ICMS routing, and 1-to-N Component duplication."""
+    """
+    Parses CT-e XML handling all ICMS variants:
+      ICMS00, ICMS20, ICMS45, ICMS60, ICMS90, ICMSSN, ICMSOutraUF, etc.
+    """
+
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self.namespace = XML_NAMESPACE
+        self.ns = XML_NAMESPACE
         self.tree = ET.parse(file_path)
         self.root = self.tree.getroot()
 
-    def _get_text_resilient(self, parent_node: ET.Element, tag_name: str) -> str:
-        """Busca global e resiliente: varre todos os nós filhos ignorando a hierarquia exata."""
-        if parent_node is None: return ""
-        
-        # 1. Caminho direto via XPath
-        el = parent_node.find(f".//ns:{tag_name}", self.namespace)
+    def _find_text(self, parent: ET.Element, tag: str) -> str:
+        """
+        Finds tag inside parent with flat XPath, then brute-force iteration.
+        Restricts search to parent subtree to avoid grabbing wrong values.
+        """
+        if parent is None:
+            return ""
+        el = parent.find(f".//ns:{tag}", self.ns)
         if el is not None and el.text:
             return el.text.strip()
-        
-        # 2. Busca de força bruta na árvore inteira
-        target = tag_name.lower()
-        for child in parent_node.iter():
-            clean_tag = child.tag.split('}')[-1].lower()
-            if clean_tag == target and child.text:
+        tag_lower = tag.lower()
+        for child in parent.iter():
+            if child.tag.split("}")[-1].lower() == tag_lower and child.text:
                 return child.text.strip()
-                
         return ""
 
+    def _detect_icms_variant(self, imp_node: ET.Element) -> str:
+        """
+        Returns the ICMS variant element name found directly inside <ICMS>,
+        e.g. 'ICMS00', 'ICMS60', 'ICMSOutraUF'.
+        Falls back to iterating all imp descendants if <ICMS> is not found.
+        """
+        if imp_node is None:
+            return ""
+        icms_node = imp_node.find(".//ns:ICMS", self.ns)
+        search_node = icms_node if icms_node is not None else imp_node
+        for child in search_node:
+            tag_name = child.tag.split("}")[-1]
+            if tag_name.upper().startswith("ICMS") and tag_name.upper() != "ICMS":
+                return tag_name
+        return ""
+
+    def _extract_icms(self, inf_cte_node: ET.Element, base_data: Dict[str, str]):
+        """
+        Routes ICMS extraction based on the variant detected inside <imp>.
+
+        Variants and their mapped columns:
+          ICMSOutraUF → imp_ICMSOutraUF_CST / vBCOutraUF / pICMSOutraUF / vICMSOutraUF
+          ICMS60      → imp_CST / imp_vBCSTRet / imp_vICMSSTRet / imp_pICMSSTRet
+          All others  → imp_CST / imp_vBC / imp_pICMS / imp_vICMS
+                        (also tries vBCSTRet/vICMSSTRet/pICMSSTRet for mixed variants like ICMS90)
+        """
+        imp_node = inf_cte_node.find(".//ns:imp", self.ns)
+        if imp_node is None:
+            return
+
+        variant = self._detect_icms_variant(imp_node)
+        variant_upper = variant.upper()
+
+        if variant_upper == "ICMSOUTRAUF":
+            base_data["imp_ICMSOutraUF_CST"]          = self._find_text(imp_node, "CST")
+            base_data["imp_ICMSOutraUF_vBCOutraUF"]    = self._find_text(imp_node, "vBCOutraUF")
+            base_data["imp_ICMSOutraUF_pICMSOutraUF"]  = self._find_text(imp_node, "pICMSOutraUF")
+            base_data["imp_ICMSOutraUF_vICMSOutraUF"]  = self._find_text(imp_node, "vICMSOutraUF")
+
+        elif variant_upper == "ICMS60":
+            base_data["imp_CST"]          = self._find_text(imp_node, "CST")
+            base_data["imp_vBCSTRet"]     = self._find_text(imp_node, "vBCSTRet")
+            base_data["imp_vICMSSTRet"]   = self._find_text(imp_node, "vICMSSTRet")
+            base_data["imp_pICMSSTRet"]   = self._find_text(imp_node, "pICMSSTRet")
+
+        else:
+            # ICMS00, ICMS20, ICMS45, ICMS90, ICMSSN, etc.
+            base_data["imp_CST"]    = self._find_text(imp_node, "CST")
+            base_data["imp_vBC"]    = self._find_text(imp_node, "vBC")
+            base_data["imp_pICMS"]  = self._find_text(imp_node, "pICMS")
+            base_data["imp_vICMS"]  = self._find_text(imp_node, "vICMS")
+            # Some variants (e.g. ICMS90) may carry STRet fields simultaneously
+            base_data["imp_vBCSTRet"]   = self._find_text(imp_node, "vBCSTRet")
+            base_data["imp_vICMSSTRet"] = self._find_text(imp_node, "vICMSSTRet")
+            base_data["imp_pICMSSTRet"] = self._find_text(imp_node, "pICMSSTRet")
+
     def extract_data(self, headers: List[str]) -> List[Dict[str, str]]:
-        base_data = {header: "" for header in headers}
-        
-        inf_cte_node = self.root.find(".//ns:infCte", self.namespace)
+        base_data: Dict[str, str] = {header: "" for header in headers}
+
+        inf_cte_node = self.root.find(".//ns:infCte", self.ns)
         if inf_cte_node is None:
             return [base_data]
 
+        # --- 1. ID ---
         base_data["chv_cte_Id"] = inf_cte_node.get("Id", "").replace("CTe", "")
 
-        # --- 1. EXTRACT STANDARD TAGS DYNAMICALLY ---
+        # --- 2. DYNAMIC EXTRACTION for all simple tags ---
+        # Skips group headers "(xxx)", ICMS columns (handled below), and manual columns.
+        skip = ICMS_COLUMNS | MANUAL_COLUMNS
         for header in headers:
-            if header.startswith("(") or header in ICMS_COLUMNS or header in ["chv_cte_Id", "vPrest_xNome", "vPrest_vComp"]:
-                continue 
-            
+            if header.startswith("(") or header in skip:
+                continue
             path_parts = header.split("_")
-            xpath = ".//" + "/".join([f"ns:{part}" for part in path_parts])
-            element = inf_cte_node.find(xpath, self.namespace)
-            base_data[header] = element.text.strip() if element is not None and element.text else ""
+            xpath = ".//" + "/".join(f"ns:{part}" for part in path_parts)
+            element = inf_cte_node.find(xpath, self.ns)
+            if element is not None and element.text:
+                base_data[header] = element.text.strip()
 
-        # --- 2. EXPLICIT ICMS ROUTING LOGIC (BULLETPROOF GLOBAL SEARCH) ---
-        # Varredura para descobrir qual o grupo de ICMS da nota sem depender do nó <imp>
-        is_outra_uf = False
-        for child in inf_cte_node.iter():
-            if child.tag.split('}')[-1].lower() == "icmsoutrauf":
-                is_outra_uf = True
-                break
+        # --- 3. ICMS ROUTING (replaces any value set above for ICMS columns) ---
+        self._extract_icms(inf_cte_node, base_data)
 
-        # Força a extração das tags em QUALQUER LUGAR da nota fiscal
-        if is_outra_uf:
-            base_data["imp_ICMSOutraUF_CST"] = self._get_text_resilient(inf_cte_node, "CST")
-            base_data["imp_ICMSOutraUF_vBCOutraUF"] = self._get_text_resilient(inf_cte_node, "vBCOutraUF")
-            base_data["imp_ICMSOutraUF_pICMSOutraUF"] = self._get_text_resilient(inf_cte_node, "pICMSOutraUF")
-            base_data["imp_ICMSOutraUF_vICMSOutraUF"] = self._get_text_resilient(inf_cte_node, "vICMSOutraUF")
-        else:
-            base_data["imp_CST"] = self._get_text_resilient(inf_cte_node, "CST")
-            base_data["imp_vBC"] = self._get_text_resilient(inf_cte_node, "vBC")
-            base_data["imp_pICMS"] = self._get_text_resilient(inf_cte_node, "pICMS")
-            base_data["imp_vICMS"] = self._get_text_resilient(inf_cte_node, "vICMS")
-            base_data["imp_vBCSTRet"] = self._get_text_resilient(inf_cte_node, "vBCSTRet")
-            base_data["imp_vICMSSTRet"] = self._get_text_resilient(inf_cte_node, "vICMSSTRet")
-            base_data["imp_pICMSSTRet"] = self._get_text_resilient(inf_cte_node, "pICMSSTRet")
-
-        # --- 3. COMPONENT DUPLICATION LOGIC (1-to-N) ---
-        rows = []
-        vprest_node = inf_cte_node.find(".//ns:vPrest", self.namespace)
-        comps = vprest_node.findall("ns:Comp", self.namespace) if vprest_node is not None else []
+        # --- 4. COMPONENT DUPLICATION (1-to-N rows per Comp) ---
+        rows: List[Dict[str, str]] = []
+        vprest_node = inf_cte_node.find(".//ns:vPrest", self.ns)
+        comps = vprest_node.findall("ns:Comp", self.ns) if vprest_node is not None else []
 
         if comps:
             for comp in comps:
                 row = base_data.copy()
-                row["vPrest_xNome"] = self._get_text_resilient(comp, "xNome")
-                row["vPrest_vComp"] = self._get_text_resilient(comp, "vComp")
+                row["vPrest_xNome"] = self._find_text(comp, "xNome")
+                row["vPrest_vComp"] = self._find_text(comp, "vComp")
                 rows.append(row)
         else:
             rows.append(base_data.copy())
 
         return rows
 
+
 class ExcelExporter:
-    """Exports to styled Excel."""
+    """Exports parsed data to a styled Excel file."""
+
     def __init__(self, data: List[Dict[str, Any]], headers: List[str]):
         self.data = data
         self.headers = headers
 
     def export(self, output_filename: str):
-        if not self.data: return
+        if not self.data:
+            return
         print(f"Generating Excel file: {output_filename}...")
-        
+
         df = pd.DataFrame(self.data)
         df = df.reindex(columns=self.headers, fill_value="")
 
-        with pd.ExcelWriter(output_filename, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='CTe Data')
-            worksheet = writer.sheets['CTe Data']
-            
+        with pd.ExcelWriter(output_filename, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="CTe Data")
+            ws = writer.sheets["CTe Data"]
+
             gray_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             bold_font = Font(bold=True)
 
             for col_idx, header_text in enumerate(self.headers, 1):
-                worksheet.cell(row=1, column=col_idx).font = bold_font
+                ws.cell(row=1, column=col_idx).font = bold_font
                 if header_text.startswith("(") and header_text.endswith(")"):
-                    for row in worksheet.iter_rows(min_row=1, max_row=worksheet.max_row, min_col=col_idx, max_col=col_idx):
+                    for row in ws.iter_rows(
+                        min_row=1, max_row=ws.max_row,
+                        min_col=col_idx, max_col=col_idx
+                    ):
                         for cell in row:
                             cell.fill = gray_fill
 
 
 class AppController:
-    """Main Orchestrator."""
+    """Main orchestrator."""
+
     def __init__(self, input_dir: str = "files"):
         self.input_dir = input_dir
         if not os.path.exists(self.input_dir):
@@ -258,56 +310,51 @@ class AppController:
 
     def run(self):
         print("--- CT-e XML to Excel Converter ---")
-        rar_filename = input(f"Enter the name of the .rar file (must be in '{self.input_dir}/'): ")
+        rar_filename = input(f"Enter the name of the .rar file (must be in '{self.input_dir}/'): ").strip()
         rar_path = os.path.join(self.input_dir, rar_filename)
 
         if not os.path.exists(rar_path):
-            print(f"\nError: File not found.")
+            print(f"\nError: File not found at '{rar_path}'.")
             return
 
         archive_handler = ArchiveHandler(rar_path)
-        
-        # Try/Finally to guarantee folder cleanup even if code crashes
+
         try:
             archive_handler.extract_all()
             xml_files = archive_handler.find_xml_files()
             print(f"Total XML files found: {len(xml_files)}")
 
-            all_data = []
-            error_details = [] # Lista para rastrear os detalhes dos erros
-            
+            all_data: List[Dict[str, Any]] = []
+            error_details: List[str] = []
+
             for xml_file in tqdm(xml_files, desc="Processing XMLs", unit="file"):
                 try:
                     parser = XMLParser(xml_file)
                     rows = parser.extract_data(EXCEL_HEADERS)
                     all_data.extend(rows)
                 except Exception as e:
-                    # Captura o nome do arquivo e o erro específico
                     file_name = os.path.basename(xml_file)
                     error_details.append(f"Arquivo: [{file_name}] | Erro: {str(e)}")
 
-            # --- Geração do Log de Erros ---
             if error_details:
                 log_filename = f"erros_{os.path.splitext(rar_filename)[0]}.log"
                 with open(log_filename, "w", encoding="utf-8") as f:
                     f.write("RELATÓRIO DE ERROS DE PROCESSAMENTO - CT-e\n")
-                    f.write("="*50 + "\n")
+                    f.write("=" * 50 + "\n")
                     for err in error_details:
                         f.write(err + "\n")
-                
-                print(f"\nAviso: {len(error_details)} arquivo(s) XML falharam ao ser processados.")
-                print(f"Verifique o arquivo '{log_filename}' gerado na sua pasta para ver os detalhes do problema.")
+                print(f"\nAviso: {len(error_details)} arquivo(s) XML falharam.")
+                print(f"Verifique '{log_filename}' para detalhes.")
 
             output_filename = f"{os.path.splitext(rar_filename)[0]}.xlsx"
             exporter = ExcelExporter(all_data, EXCEL_HEADERS)
             exporter.export(output_filename)
-            
-            print(f"\nSuccess! Excel saved as: {output_filename}")
+            print(f"\nSucesso! Excel salvo como: {output_filename}")
 
         except Exception as e:
-            print(f"\nAn unexpected error occurred no processo principal: {e}")
+            print(f"\nErro inesperado no processo principal: {e}")
         finally:
-            print("\nCleaning up temporary files...")
+            print("\nLimpando arquivos temporários...")
             archive_handler.cleanup()
 
 
