@@ -11,12 +11,8 @@ from openpyxl.styles import PatternFill, Font
 from tqdm import tqdm
 
 # --- Configuration ---
-
-# The namespace is crucial for finding elements in the CT-e XML file.
 XML_NAMESPACE = {"ns": "http://www.portalfiscal.inf.br/cte"}
 
-# Defines the exact order and names of the columns for the Excel file.
-# Headers in parentheses like "(CTe)" are treated as visual separators.
 EXCEL_HEADERS: List[str] = [
     "(CTe)", "chv_cte_Id", "(ide)", "ide_cUF", "ide_cCT", "ide_CFOP", "ide_natOp",
     "ide_mod", "ide_serie", "ide_nCT", "ide_dhEmi", "ide_tpImp", "ide_tpEmis",
@@ -71,14 +67,17 @@ EXCEL_HEADERS: List[str] = [
     "(infCteComp)", "infCteComp_chCTe"
 ]
 
-# --- Class Definitions ---
+# List of columns that require explicit mapping (handled manually)
+ICMS_COLUMNS = [
+    "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS", "imp_vBCSTRet", 
+    "imp_vICMSSTRet", "imp_pICMSSTRet", "imp_ICMSOutraUF_CST", 
+    "imp_ICMSOutraUF_vBCOutraUF", "imp_ICMSOutraUF_pICMSOutraUF", 
+    "imp_ICMSOutraUF_vICMSOutraUF"
+]
+
 
 class ArchiveHandler:
-    """
-    Handles the recursive extraction of .rar and .zip archives and
-    discovery of XML files within a temporary directory.
-    """
-
+    """Handles extraction of .rar and .zip archives."""
     def __init__(self, archive_path: str):
         if not os.path.exists(archive_path):
             raise FileNotFoundError(f"Archive not found at: {archive_path}")
@@ -86,10 +85,6 @@ class ArchiveHandler:
         self.temp_dir = tempfile.mkdtemp(prefix="cte_extraction_")
 
     def _extract_recursive(self):
-        """
-        Continuously scans the temporary directory for .rar and .zip files
-        and extracts them until no archives remain.
-        """
         while True:
             archives_found = False
             for root, _, files in os.walk(self.temp_dir):
@@ -109,32 +104,22 @@ class ArchiveHandler:
                             os.remove(file_path)
                             archives_found = True
                     except Exception as e:
-                        print(f"Warning: Failed to extract '{file}'. Reason: {e}")
-                        # Rename or remove to avoid infinite loop
                         os.rename(file_path, file_path + ".failed")
             
             if not archives_found:
                 break
 
     def extract_all(self):
-        """
-        Extracts the initial .rar file and then recursively extracts all
-        nested archives.
-        """
         print(f"Extracting main archive: {os.path.basename(self.archive_path)}...")
         try:
             with rarfile.RarFile(self.archive_path) as rf:
                 rf.extractall(path=self.temp_dir)
-            
             print("Scanning for nested archives...")
             self._extract_recursive()
         except rarfile.Error as e:
             raise RuntimeError(f"Failed to extract RAR file. Ensure 'unrar' is installed. Details: {e}")
 
     def find_xml_files(self) -> List[str]:
-        """
-        Recursively finds all .xml files in the temporary directory.
-        """
         xml_files = []
         for root, _, files in os.walk(self.temp_dir):
             for file in files:
@@ -143,7 +128,6 @@ class ArchiveHandler:
         return xml_files
 
     def cleanup(self):
-        """Deletes the temporary extraction directory."""
         if os.path.exists(self.temp_dir):
             try:
                 shutil.rmtree(self.temp_dir)
@@ -152,84 +136,61 @@ class ArchiveHandler:
 
 
 class XMLParser:
-    """
-    Parses a CT-e XML file, handling namespaces, extracting data,
-    and managing 1-to-N relationships for components.
-    """
-
+    """Parses CT-e XML, handling namespaces, ICMS routing, and 1-to-N Component duplication."""
     def __init__(self, file_path: str):
         self.file_path = file_path
         self.namespace = XML_NAMESPACE
-        try:
-            self.tree = ET.parse(file_path)
-            self.root = self.tree.getroot()
-        except ET.ParseError as e:
-            raise ValueError(f"Error parsing XML file: {e}")
+        self.tree = ET.parse(file_path)
+        self.root = self.tree.getroot()
+
+    def _get_text(self, node: ET.Element, tag: str) -> str:
+        """Helper to safely extract text from a node."""
+        if node is None: return ""
+        child = node.find(f"ns:{tag}", self.namespace)
+        return child.text if child is not None else ""
 
     def extract_data(self, headers: List[str]) -> List[Dict[str, str]]:
-        """
-        Extracts data for each header from the XML file, generating multiple
-        rows if multiple 'Comp' tags are found in 'vPrest'.
-
-        Args:
-            headers: A list of column headers to extract.
-
-        Returns:
-            A list of dictionaries, where each dictionary represents a row.
-        """
-        base_data = {}
+        base_data = {header: "" for header in headers}
+        
         inf_cte_node = self.root.find(".//ns:infCte", self.namespace)
         if inf_cte_node is None:
-            # Warning suppressed for batch processing cleanliness, returning empty row
-            return [{header: "" for header in headers}]
+            return [base_data]
 
-        # Special handling for the CTe key, which is an attribute
         base_data["chv_cte_Id"] = inf_cte_node.get("Id", "").replace("CTe", "")
 
-        # Pre-calculate ICMS child (Critical Rule 2)
-        # Finds the first child of <imp><ICMS>, which could be ICMS00, ICMS20, ICMSOutraUF, etc.
-        icms_node = inf_cte_node.find("ns:imp/ns:ICMS", self.namespace)
-        active_icms_child = None
+        # --- 1. EXTRACT STANDARD TAGS DYNAMICALLY ---
+        for header in headers:
+            if header.startswith("(") or header in ICMS_COLUMNS or header in ["chv_cte_Id", "vPrest_xNome", "vPrest_vComp"]:
+                continue 
+            
+            path_parts = header.split("_")
+            xpath = ".//" + "/".join([f"ns:{part}" for part in path_parts])
+            element = inf_cte_node.find(xpath, self.namespace)
+            base_data[header] = element.text if element is not None else ""
+
+        # --- 2. EXPLICIT ICMS ROUTING LOGIC ---
+        icms_node = inf_cte_node.find(".//ns:imp/ns:ICMS", self.namespace)
         if icms_node is not None and len(icms_node) > 0:
             active_icms_child = icms_node[0]
+            tag_name = active_icms_child.tag.split('}')[-1] # Remove namespace
 
-        icms_generic_fields = ["imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS", 
-                               "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet"]
-        icms_outra_uf_fields = ["imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF", 
-                                "imp_ICMSOutraUF_pICMSOutraUF", "imp_ICMSOutraUF_vICMSOutraUF"]
-
-        # Extract common fields (everything except specific component data)
-        for header in headers:
-            if header.startswith("(") or header == "chv_cte_Id":
-                continue  # Skip separators and already processed keys
-
-            # Skip component specific fields for now, they are handled in the loop below
-            if header in ["vPrest_xNome", "vPrest_vComp"]:
-                continue
-
-            val = ""
-            if header in icms_generic_fields:
-                # Search inside the active ICMS child (e.g., ICMS00) for the specific tag (e.g., CST)
-                if active_icms_child is not None:
-                    tag = header.split("_")[1]
-                    el = active_icms_child.find(f"ns:{tag}", self.namespace)
-                    val = el.text if el is not None else ""
-            elif header in icms_outra_uf_fields:
-                # Specific handling for ICMSOutraUF group
-                if active_icms_child is not None and "ICMSOutraUF" in active_icms_child.tag:
-                    tag = header.replace("imp_ICMSOutraUF_", "")
-                    el = active_icms_child.find(f"ns:{tag}", self.namespace)
-                    val = el.text if el is not None else ""
+            # Route fields depending on the active ICMS group
+            if tag_name == "ICMSOutraUF":
+                base_data["imp_ICMSOutraUF_CST"] = self._get_text(active_icms_child, "CST")
+                base_data["imp_ICMSOutraUF_vBCOutraUF"] = self._get_text(active_icms_child, "vBCOutraUF")
+                base_data["imp_ICMSOutraUF_pICMSOutraUF"] = self._get_text(active_icms_child, "pICMSOutraUF")
+                base_data["imp_ICMSOutraUF_vICMSOutraUF"] = self._get_text(active_icms_child, "vICMSOutraUF")
             else:
-                # Standard logic for all other fields
-                path_parts = header.split("_")
-                xpath = ".//" + "/".join([f"ns:{part}" for part in path_parts])
-                element = inf_cte_node.find(xpath, self.namespace)
-                val = element.text if element is not None else ""
-            
-            base_data[header] = val
-            
-        # Handle 1-to-N for Components (vPrest/Comp)
+                # Covers ICMS00, ICMS20, ICMS45, ICMS60, ICMS90, ICMSSN...
+                base_data["imp_CST"] = self._get_text(active_icms_child, "CST")
+                base_data["imp_vBC"] = self._get_text(active_icms_child, "vBC")
+                base_data["imp_pICMS"] = self._get_text(active_icms_child, "pICMS")
+                base_data["imp_vICMS"] = self._get_text(active_icms_child, "vICMS")
+                base_data["imp_vBCSTRet"] = self._get_text(active_icms_child, "vBCSTRet")
+                base_data["imp_vICMSSTRet"] = self._get_text(active_icms_child, "vICMSSTRet")
+                base_data["imp_pICMSSTRet"] = self._get_text(active_icms_child, "pICMSSTRet")
+
+        # --- 3. COMPONENT DUPLICATION LOGIC (1-to-N) ---
         rows = []
         vprest_node = inf_cte_node.find(".//ns:vPrest", self.namespace)
         comps = vprest_node.findall("ns:Comp", self.namespace) if vprest_node is not None else []
@@ -237,135 +198,107 @@ class XMLParser:
         if comps:
             for comp in comps:
                 row = base_data.copy()
-                x_nome = comp.find("ns:xNome", self.namespace)
-                v_comp = comp.find("ns:vComp", self.namespace)
-                
-                row["vPrest_xNome"] = x_nome.text if x_nome is not None else ""
-                row["vPrest_vComp"] = v_comp.text if v_comp is not None else ""
+                row["vPrest_xNome"] = self._get_text(comp, "xNome")
+                row["vPrest_vComp"] = self._get_text(comp, "vComp")
                 rows.append(row)
         else:
-            # If no components are found, create one row with empty component fields
-            row = base_data.copy()
-            row["vPrest_xNome"] = ""
-            row["vPrest_vComp"] = ""
-            rows.append(row)
+            # Create at least one row if no components exist
+            rows.append(base_data.copy())
 
         return rows
 
 
 class ExcelExporter:
-    """
-    Aggregates data and exports it to a styled Excel (.xlsx) file using pandas.
-    """
-
+    """Exports to styled Excel."""
     def __init__(self, data: List[Dict[str, Any]], headers: List[str]):
         self.data = data
         self.headers = headers
 
     def export(self, output_filename: str):
-        """
-        Creates and saves the styled Excel file.
-        """
-        if not self.data:
-            print("No data to export.")
-            return
-
+        if not self.data: return
         print(f"Generating Excel file: {output_filename}...")
         
-        # Create DataFrame and ensure column order
         df = pd.DataFrame(self.data)
-        # Reindex to ensure all columns are present and in order, filling missing with ""
         df = df.reindex(columns=self.headers, fill_value="")
 
         with pd.ExcelWriter(output_filename, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='CTe Data')
-            
-            # Apply styling using openpyxl
-            workbook = writer.book
             worksheet = writer.sheets['CTe Data']
             
             gray_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             bold_font = Font(bold=True)
 
-            # Iterate over columns to apply styles
             for col_idx, header_text in enumerate(self.headers, 1):
-                # Style Header
-                cell = worksheet.cell(row=1, column=col_idx)
-                cell.font = bold_font
-                
-                # Check if it is a separator column
+                worksheet.cell(row=1, column=col_idx).font = bold_font
                 if header_text.startswith("(") and header_text.endswith(")"):
-                    # Apply gray fill to the entire column (header + data)
-                    # Note: Iterating rows in openpyxl can be slow for huge datasets, 
-                    # but is necessary for cell-specific styling.
                     for row in worksheet.iter_rows(min_row=1, max_row=worksheet.max_row, min_col=col_idx, max_col=col_idx):
                         for cell in row:
                             cell.fill = gray_fill
 
 
 class AppController:
-    """
-    Orchestrates the conversion process from XML to Excel.
-    """
-
+    """Main Orchestrator."""
     def __init__(self, input_dir: str = "files"):
         self.input_dir = input_dir
-        self._ensure_input_dir()
-
-    def _ensure_input_dir(self):
-        """Ensures the input directory exists."""
         if not os.path.exists(self.input_dir):
             os.makedirs(self.input_dir)
-            print(f"Created directory: '{self.input_dir}/'")
-            print(f"Please place your .rar file inside it and run the script again.")
+            print(f"Created directory: '{self.input_dir}/'. Please place your .rar inside it.")
             exit()
 
     def run(self):
-        """Main application loop."""
         print("--- CT-e XML to Excel Converter ---")
+        rar_filename = input(f"Enter the name of the .rar file (must be in '{self.input_dir}/'): ")
+        rar_path = os.path.join(self.input_dir, rar_filename)
+
+        if not os.path.exists(rar_path):
+            print(f"\nError: File not found.")
+            return
+
+        archive_handler = ArchiveHandler(rar_path)
         
+        # Try/Finally to guarantee folder cleanup even if code crashes
         try:
-            rar_filename = input(f"Enter the name of the .rar file (must be in '{self.input_dir}/' folder): ")
-            rar_path = os.path.join(self.input_dir, rar_filename)
-
-            if not os.path.exists(rar_path):
-                print(f"\nError: File '{rar_filename}' not found in the '{self.input_dir}/' directory.")
-                return
-
-            # 1. Extract Archives
-            archive_handler = ArchiveHandler(rar_path)
             archive_handler.extract_all()
-
-            # 2. Find XMLs
             xml_files = archive_handler.find_xml_files()
             print(f"Total XML files found: {len(xml_files)}")
 
-            # 3. Batch Process with Progress Bar
             all_data = []
+            error_details = [] # Lista para rastrear os detalhes dos erros
+            
             for xml_file in tqdm(xml_files, desc="Processing XMLs", unit="file"):
                 try:
                     parser = XMLParser(xml_file)
                     rows = parser.extract_data(EXCEL_HEADERS)
                     all_data.extend(rows)
                 except Exception as e:
-                    # Log error but continue processing other files
-                    # In a real app, you might write this to an error.log
-                    pass
+                    # Captura o nome do arquivo e o erro específico
+                    file_name = os.path.basename(xml_file)
+                    error_details.append(f"Arquivo: [{file_name}] | Erro: {str(e)}")
 
-            # 4. Export to Excel
+            # --- Geração do Log de Erros ---
+            if error_details:
+                log_filename = f"erros_{os.path.splitext(rar_filename)[0]}.log"
+                with open(log_filename, "w", encoding="utf-8") as f:
+                    f.write("RELATÓRIO DE ERROS DE PROCESSAMENTO - CT-e\n")
+                    f.write("="*50 + "\n")
+                    for err in error_details:
+                        f.write(err + "\n")
+                
+                print(f"\nAviso: {len(error_details)} arquivo(s) XML falharam ao ser processados.")
+                print(f"Verifique o arquivo '{log_filename}' gerado na sua pasta para ver os detalhes do problema.")
+
             output_filename = f"{os.path.splitext(rar_filename)[0]}.xlsx"
             exporter = ExcelExporter(all_data, EXCEL_HEADERS)
             exporter.export(output_filename)
-
-            # 5. Cleanup
-            archive_handler.cleanup()
-            print(f"\nSuccess! Data has been converted to '{output_filename}'")
+            
+            print(f"\nSuccess! Excel saved as: {output_filename}")
 
         except Exception as e:
-            print(f"\nAn unexpected error occurred: {e}")
+            print(f"\nAn unexpected error occurred no processo principal: {e}")
+        finally:
+            print("\nCleaning up temporary files...")
+            archive_handler.cleanup()
 
-
-# --- Main Execution ---
 
 if __name__ == "__main__":
     controller = AppController()
