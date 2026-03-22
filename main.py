@@ -256,25 +256,36 @@ class AppController:
 
         archive_handler = ArchiveHandler(rar_path)
         
-        # Using Try/Finally to guarantee folder cleanup even if code crashes
+        # Try/Finally to guarantee folder cleanup even if code crashes
         try:
             archive_handler.extract_all()
             xml_files = archive_handler.find_xml_files()
             print(f"Total XML files found: {len(xml_files)}")
 
             all_data = []
-            errors = 0
+            error_details = [] # Lista para rastrear os detalhes dos erros
             
             for xml_file in tqdm(xml_files, desc="Processing XMLs", unit="file"):
                 try:
                     parser = XMLParser(xml_file)
                     rows = parser.extract_data(EXCEL_HEADERS)
                     all_data.extend(rows)
-                except Exception:
-                    errors += 1
+                except Exception as e:
+                    # Captura o nome do arquivo e o erro específico
+                    file_name = os.path.basename(xml_file)
+                    error_details.append(f"Arquivo: [{file_name}] | Erro: {str(e)}")
 
-            if errors > 0:
-                print(f"\nWarning: {errors} XML file(s) failed to parse (corrupted or wrong format).")
+            # --- Geração do Log de Erros ---
+            if error_details:
+                log_filename = f"erros_{os.path.splitext(rar_filename)[0]}.log"
+                with open(log_filename, "w", encoding="utf-8") as f:
+                    f.write("RELATÓRIO DE ERROS DE PROCESSAMENTO - CT-e\n")
+                    f.write("="*50 + "\n")
+                    for err in error_details:
+                        f.write(err + "\n")
+                
+                print(f"\nAviso: {len(error_details)} arquivo(s) XML falharam ao ser processados.")
+                print(f"Verifique o arquivo '{log_filename}' gerado na sua pasta para ver os detalhes do problema.")
 
             output_filename = f"{os.path.splitext(rar_filename)[0]}.xlsx"
             exporter = ExcelExporter(all_data, EXCEL_HEADERS)
@@ -283,7 +294,7 @@ class AppController:
             print(f"\nSuccess! Excel saved as: {output_filename}")
 
         except Exception as e:
-            print(f"\nAn unexpected error occurred: {e}")
+            print(f"\nAn unexpected error occurred no processo principal: {e}")
         finally:
             print("\nCleaning up temporary files...")
             archive_handler.cleanup()
