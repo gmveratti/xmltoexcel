@@ -144,20 +144,20 @@ class XMLParser:
         self.root = self.tree.getroot()
 
     def _get_text_resilient(self, parent_node: ET.Element, tag_name: str) -> str:
-        """Busca resiliente: ignora problemas de namespace e varre todos os nós filhos."""
+        """Busca global e resiliente: varre todos os nós filhos ignorando a hierarquia exata."""
         if parent_node is None: return ""
         
-        # 1. Tenta o caminho padrão (mais rápido)
+        # 1. Caminho direto via XPath
         el = parent_node.find(f".//ns:{tag_name}", self.namespace)
         if el is not None and el.text:
-            return el.text
+            return el.text.strip()
         
-        # 2. Fallback: varredura total ignorando namespaces e letras maiúsculas/minúsculas
+        # 2. Busca de força bruta na árvore inteira
         target = tag_name.lower()
         for child in parent_node.iter():
             clean_tag = child.tag.split('}')[-1].lower()
-            if clean_tag == target:
-                return child.text if child.text else ""
+            if clean_tag == target and child.text:
+                return child.text.strip()
                 
         return ""
 
@@ -178,32 +178,30 @@ class XMLParser:
             path_parts = header.split("_")
             xpath = ".//" + "/".join([f"ns:{part}" for part in path_parts])
             element = inf_cte_node.find(xpath, self.namespace)
-            base_data[header] = element.text if element is not None else ""
+            base_data[header] = element.text.strip() if element is not None and element.text else ""
 
-        # --- 2. EXPLICIT ICMS ROUTING LOGIC (RESILIENT) ---
-        imp_node = inf_cte_node.find(".//ns:imp", self.namespace)
-        if imp_node is not None:
-            # Descobre dinamicamente se é o grupo OutraUF
-            is_outra_uf = False
-            for child in imp_node.iter():
-                if "outrauf" in child.tag.lower():
-                    is_outra_uf = True
-                    break
+        # --- 2. EXPLICIT ICMS ROUTING LOGIC (BULLETPROOF GLOBAL SEARCH) ---
+        # Varredura para descobrir qual o grupo de ICMS da nota sem depender do nó <imp>
+        is_outra_uf = False
+        for child in inf_cte_node.iter():
+            if child.tag.split('}')[-1].lower() == "icmsoutrauf":
+                is_outra_uf = True
+                break
 
-            # Direciona os valores usando a busca profunda resiliente
-            if is_outra_uf:
-                base_data["imp_ICMSOutraUF_CST"] = self._get_text_resilient(imp_node, "CST")
-                base_data["imp_ICMSOutraUF_vBCOutraUF"] = self._get_text_resilient(imp_node, "vBCOutraUF")
-                base_data["imp_ICMSOutraUF_pICMSOutraUF"] = self._get_text_resilient(imp_node, "pICMSOutraUF")
-                base_data["imp_ICMSOutraUF_vICMSOutraUF"] = self._get_text_resilient(imp_node, "vICMSOutraUF")
-            else:
-                base_data["imp_CST"] = self._get_text_resilient(imp_node, "CST")
-                base_data["imp_vBC"] = self._get_text_resilient(imp_node, "vBC")
-                base_data["imp_pICMS"] = self._get_text_resilient(imp_node, "pICMS")
-                base_data["imp_vICMS"] = self._get_text_resilient(imp_node, "vICMS")
-                base_data["imp_vBCSTRet"] = self._get_text_resilient(imp_node, "vBCSTRet")
-                base_data["imp_vICMSSTRet"] = self._get_text_resilient(imp_node, "vICMSSTRet")
-                base_data["imp_pICMSSTRet"] = self._get_text_resilient(imp_node, "pICMSSTRet")
+        # Força a extração das tags em QUALQUER LUGAR da nota fiscal
+        if is_outra_uf:
+            base_data["imp_ICMSOutraUF_CST"] = self._get_text_resilient(inf_cte_node, "CST")
+            base_data["imp_ICMSOutraUF_vBCOutraUF"] = self._get_text_resilient(inf_cte_node, "vBCOutraUF")
+            base_data["imp_ICMSOutraUF_pICMSOutraUF"] = self._get_text_resilient(inf_cte_node, "pICMSOutraUF")
+            base_data["imp_ICMSOutraUF_vICMSOutraUF"] = self._get_text_resilient(inf_cte_node, "vICMSOutraUF")
+        else:
+            base_data["imp_CST"] = self._get_text_resilient(inf_cte_node, "CST")
+            base_data["imp_vBC"] = self._get_text_resilient(inf_cte_node, "vBC")
+            base_data["imp_pICMS"] = self._get_text_resilient(inf_cte_node, "pICMS")
+            base_data["imp_vICMS"] = self._get_text_resilient(inf_cte_node, "vICMS")
+            base_data["imp_vBCSTRet"] = self._get_text_resilient(inf_cte_node, "vBCSTRet")
+            base_data["imp_vICMSSTRet"] = self._get_text_resilient(inf_cte_node, "vICMSSTRet")
+            base_data["imp_pICMSSTRet"] = self._get_text_resilient(inf_cte_node, "pICMSSTRet")
 
         # --- 3. COMPONENT DUPLICATION LOGIC (1-to-N) ---
         rows = []
@@ -213,7 +211,6 @@ class XMLParser:
         if comps:
             for comp in comps:
                 row = base_data.copy()
-                # Aproveitando a busca resiliente aqui também para maior segurança
                 row["vPrest_xNome"] = self._get_text_resilient(comp, "xNome")
                 row["vPrest_vComp"] = self._get_text_resilient(comp, "vComp")
                 rows.append(row)
@@ -221,7 +218,6 @@ class XMLParser:
             rows.append(base_data.copy())
 
         return rows
-
 
 class ExcelExporter:
     """Exports to styled Excel."""
