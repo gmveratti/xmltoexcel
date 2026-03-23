@@ -140,124 +140,85 @@ class ArchiveHandler:
 
 
 class XMLParser:
-    """
-    Parses CT-e XML handling all ICMS variants:
-      ICMS00, ICMS20, ICMS45, ICMS60, ICMS90, ICMSSN, ICMSOutraUF, etc.
-    """
+    """Parses CT-e XML com mapeamento direto e explícito (Sem helpers complexos)."""
 
     def __init__(self, file_path: str):
         self.file_path = file_path
-        self.ns = XML_NAMESPACE
+        self.ns = {"ns": "http://www.portalfiscal.inf.br/cte"}
         self.tree = ET.parse(file_path)
         self.root = self.tree.getroot()
 
-    def _find_text(self, parent: ET.Element, tag: str) -> str:
-        """
-        Finds tag inside parent with flat XPath, then brute-force iteration.
-        Restricts search to parent subtree to avoid grabbing wrong values.
-        """
-        if parent is None:
-            return ""
-        el = parent.find(f".//ns:{tag}", self.ns)
-        if el is not None and el.text:
-            return el.text.strip()
-        tag_lower = tag.lower()
-        for child in parent.iter():
-            if child.tag.split("}")[-1].lower() == tag_lower and child.text:
-                return child.text.strip()
-        return ""
-
-    def _detect_icms_variant(self, imp_node: ET.Element) -> str:
-        """
-        Returns the ICMS variant element name found directly inside <ICMS>,
-        e.g. 'ICMS00', 'ICMS60', 'ICMSOutraUF'.
-        Falls back to iterating all imp descendants if <ICMS> is not found.
-        """
-        if imp_node is None:
-            return ""
-        icms_node = imp_node.find(".//ns:ICMS", self.ns)
-        search_node = icms_node if icms_node is not None else imp_node
-        for child in search_node:
-            tag_name = child.tag.split("}")[-1]
-            if tag_name.upper().startswith("ICMS") and tag_name.upper() != "ICMS":
-                return tag_name
-        return ""
-
-    def _extract_icms(self, inf_cte_node: ET.Element, base_data: Dict[str, str]):
-        """
-        Routes ICMS extraction based on the variant detected inside <imp>.
-
-        Variants and their mapped columns:
-          ICMSOutraUF → imp_ICMSOutraUF_CST / vBCOutraUF / pICMSOutraUF / vICMSOutraUF
-          ICMS60      → imp_CST / imp_vBCSTRet / imp_vICMSSTRet / imp_pICMSSTRet
-          All others  → imp_CST / imp_vBC / imp_pICMS / imp_vICMS
-                        (also tries vBCSTRet/vICMSSTRet/pICMSSTRet for mixed variants like ICMS90)
-        """
-        imp_node = inf_cte_node.find(".//ns:imp", self.ns)
-        if imp_node is None:
-            return
-
-        variant = self._detect_icms_variant(imp_node)
-        variant_upper = variant.upper()
-
-        if variant_upper == "ICMSOUTRAUF":
-            base_data["imp_ICMSOutraUF_CST"]          = self._find_text(imp_node, "CST")
-            base_data["imp_ICMSOutraUF_vBCOutraUF"]    = self._find_text(imp_node, "vBCOutraUF")
-            base_data["imp_ICMSOutraUF_pICMSOutraUF"]  = self._find_text(imp_node, "pICMSOutraUF")
-            base_data["imp_ICMSOutraUF_vICMSOutraUF"]  = self._find_text(imp_node, "vICMSOutraUF")
-
-        elif variant_upper == "ICMS60":
-            base_data["imp_CST"]          = self._find_text(imp_node, "CST")
-            base_data["imp_vBCSTRet"]     = self._find_text(imp_node, "vBCSTRet")
-            base_data["imp_vICMSSTRet"]   = self._find_text(imp_node, "vICMSSTRet")
-            base_data["imp_pICMSSTRet"]   = self._find_text(imp_node, "pICMSSTRet")
-
-        else:
-            # ICMS00, ICMS20, ICMS45, ICMS90, ICMSSN, etc.
-            base_data["imp_CST"]    = self._find_text(imp_node, "CST")
-            base_data["imp_vBC"]    = self._find_text(imp_node, "vBC")
-            base_data["imp_pICMS"]  = self._find_text(imp_node, "pICMS")
-            base_data["imp_vICMS"]  = self._find_text(imp_node, "vICMS")
-            # Some variants (e.g. ICMS90) may carry STRet fields simultaneously
-            base_data["imp_vBCSTRet"]   = self._find_text(imp_node, "vBCSTRet")
-            base_data["imp_vICMSSTRet"] = self._find_text(imp_node, "vICMSSTRet")
-            base_data["imp_pICMSSTRet"] = self._find_text(imp_node, "pICMSSTRet")
-
     def extract_data(self, headers: List[str]) -> List[Dict[str, str]]:
-        base_data: Dict[str, str] = {header: "" for header in headers}
-
+        base_data = {header: "" for header in headers}
+        
         inf_cte_node = self.root.find(".//ns:infCte", self.ns)
         if inf_cte_node is None:
             return [base_data]
 
-        # --- 1. ID ---
         base_data["chv_cte_Id"] = inf_cte_node.get("Id", "").replace("CTe", "")
 
-        # --- 2. DYNAMIC EXTRACTION for all simple tags ---
-        # Skips group headers "(xxx)", ICMS columns (handled below), and manual columns.
-        skip = ICMS_COLUMNS | MANUAL_COLUMNS
+        # --- 1. EXTRAÇÃO DINÂMICA SIMPLES (Ignora os Impostos Específicos) ---
+        skip_cols = {
+            "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS",
+            "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
+            "imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF",
+            "imp_ICMSOutraUF_pICMSOutraUF", "imp_ICMSOutraUF_vICMSOutraUF",
+            "chv_cte_Id", "vPrest_xNome", "vPrest_vComp"
+        }
+        
         for header in headers:
-            if header.startswith("(") or header in skip:
+            if header.startswith("(") or header in skip_cols:
                 continue
-            path_parts = header.split("_")
-            xpath = ".//" + "/".join(f"ns:{part}" for part in path_parts)
+            xpath = ".//" + "/".join([f"ns:{p}" for p in header.split("_")])
             element = inf_cte_node.find(xpath, self.ns)
             if element is not None and element.text:
                 base_data[header] = element.text.strip()
 
-        # --- 3. ICMS ROUTING (replaces any value set above for ICMS columns) ---
-        self._extract_icms(inf_cte_node, base_data)
+        # --- 2. EXTRAÇÃO DIRETA DE ICMS (IMPOSSÍVEL DE FALHAR) ---
+        icms_node = inf_cte_node.find(".//ns:ICMS", self.ns)
+        if icms_node is not None and len(icms_node) > 0:
+            grupo_icms = icms_node[0] # Pega a tag do grupo (ex: ICMS60, ICMSOutraUF)
+            tag_grupo = grupo_icms.tag.split("}")[-1].upper()
 
-        # --- 4. COMPONENT DUPLICATION (1-to-N rows per Comp) ---
-        rows: List[Dict[str, str]] = []
-        vprest_node = inf_cte_node.find(".//ns:vPrest", self.ns)
-        comps = vprest_node.findall("ns:Comp", self.ns) if vprest_node is not None else []
+            if tag_grupo == "ICMSOUTRAUF":
+                for child in grupo_icms:
+                    c_tag = child.tag.split("}")[-1]
+                    if c_tag == "CST": base_data["imp_ICMSOutraUF_CST"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vBCOutraUF": base_data["imp_ICMSOutraUF_vBCOutraUF"] = child.text.strip() if child.text else ""
+                    elif c_tag == "pICMSOutraUF": base_data["imp_ICMSOutraUF_pICMSOutraUF"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vICMSOutraUF": base_data["imp_ICMSOutraUF_vICMSOutraUF"] = child.text.strip() if child.text else ""
 
+            elif tag_grupo == "ICMS60":
+                for child in grupo_icms:
+                    c_tag = child.tag.split("}")[-1]
+                    if c_tag == "CST": base_data["imp_CST"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vBCSTRet": base_data["imp_vBCSTRet"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vICMSSTRet": base_data["imp_vICMSSTRet"] = child.text.strip() if child.text else ""
+                    elif c_tag == "pICMSSTRet": base_data["imp_pICMSSTRet"] = child.text.strip() if child.text else ""
+
+            else:
+                # ICMS00, ICMS20, ICMS90, etc.
+                for child in grupo_icms:
+                    c_tag = child.tag.split("}")[-1]
+                    if c_tag == "CST": base_data["imp_CST"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vBC": base_data["imp_vBC"] = child.text.strip() if child.text else ""
+                    elif c_tag == "pICMS": base_data["imp_pICMS"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vICMS": base_data["imp_vICMS"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vBCSTRet": base_data["imp_vBCSTRet"] = child.text.strip() if child.text else ""
+                    elif c_tag == "vICMSSTRet": base_data["imp_vICMSSTRet"] = child.text.strip() if child.text else ""
+                    elif c_tag == "pICMSSTRet": base_data["imp_pICMSSTRet"] = child.text.strip() if child.text else ""
+
+        # --- 3. DUPLICAÇÃO DE COMPONENTES ---
+        rows = []
+        comps = inf_cte_node.findall(".//ns:vPrest/ns:Comp", self.ns)
+        
         if comps:
             for comp in comps:
                 row = base_data.copy()
-                row["vPrest_xNome"] = self._find_text(comp, "xNome")
-                row["vPrest_vComp"] = self._find_text(comp, "vComp")
+                x_nome = comp.find("ns:xNome", self.ns)
+                v_comp = comp.find("ns:vComp", self.ns)
+                if x_nome is not None and x_nome.text: row["vPrest_xNome"] = x_nome.text.strip()
+                if v_comp is not None and v_comp.text: row["vPrest_vComp"] = v_comp.text.strip()
                 rows.append(row)
         else:
             rows.append(base_data.copy())
