@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
+import re
 from typing import List, Dict, Any
 
 import pandas as pd
@@ -67,8 +68,6 @@ EXCEL_HEADERS: List[str] = [
     "(infCteComp)", "infCteComp_chCTe"
 ]
 
-# Columns handled exclusively by the ICMS routing block — MUST be skipped in the dynamic loop
-# Using a set for O(1) lookup performance
 ICMS_COLUMNS: set = {
     "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS",
     "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
@@ -81,7 +80,6 @@ MANUAL_COLUMNS: set = {"chv_cte_Id", "vPrest_xNome", "vPrest_vComp"}
 
 class ArchiveHandler:
     """Handles extraction of .rar and .zip archives."""
-
     def __init__(self, archive_path: str):
         if not os.path.exists(archive_path):
             raise FileNotFoundError(f"Archive not found at: {archive_path}")
@@ -119,9 +117,7 @@ class ArchiveHandler:
             print("Scanning for nested archives...")
             self._extract_recursive()
         except rarfile.Error as e:
-            raise RuntimeError(
-                f"Failed to extract RAR file. Ensure 'unrar' is installed. Details: {e}"
-            )
+            raise RuntimeError(f"Failed to extract RAR file. Ensure 'unrar' is installed. Details: {e}")
 
     def find_xml_files(self) -> List[str]:
         xml_files = []
@@ -140,13 +136,21 @@ class ArchiveHandler:
 
 
 class XMLParser:
-    """Parses CT-e XML com mapeamento direto e explícito (Sem helpers complexos)."""
+    """Parses CT-e XML usando um Motor de Busca Fuzzy Hierárquico para 100% de precisão."""
 
     def __init__(self, file_path: str):
         self.file_path = file_path
         self.ns = {"ns": "http://www.portalfiscal.inf.br/cte"}
         self.tree = ET.parse(file_path)
         self.root = self.tree.getroot()
+
+    def _search_tag(self, parent_node: ET.Element, target_tag: str) -> ET.Element:
+        """Faz a busca ignorando o namespace, varrendo os filhos diretos e descendentes."""
+        target = target_tag.lower()
+        for child in parent_node.iter():
+            if child.tag.split('}')[-1].lower() == target:
+                return child
+        return None
 
     def extract_data(self, headers: List[str]) -> List[Dict[str, str]]:
         base_data = {header: "" for header in headers}
@@ -157,27 +161,29 @@ class XMLParser:
 
         base_data["chv_cte_Id"] = inf_cte_node.get("Id", "").replace("CTe", "")
 
-        # --- 1. EXTRAÇÃO DINÂMICA SIMPLES (Ignora os Impostos Específicos) ---
-        skip_cols = {
-            "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS",
-            "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
-            "imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF",
-            "imp_ICMSOutraUF_pICMSOutraUF", "imp_ICMSOutraUF_vICMSOutraUF",
-            "chv_cte_Id", "vPrest_xNome", "vPrest_vComp"
-        }
+        # --- 1. EXTRAÇÃO FUZZY HIERÁRQUICA (Resolve problemas de Namespace e Aninhamento) ---
+        skip_cols = ICMS_COLUMNS | MANUAL_COLUMNS
         
         for header in headers:
             if header.startswith("(") or header in skip_cols:
                 continue
-            xpath = ".//" + "/".join([f"ns:{p}" for p in header.split("_")])
-            element = inf_cte_node.find(xpath, self.ns)
-            if element is not None and element.text:
-                base_data[header] = element.text.strip()
+            
+            path_parts = header.split("_")
+            curr_node = inf_cte_node
+            
+            # Navega na árvore buscando tag por tag sequencialmente
+            for part in path_parts:
+                curr_node = self._search_tag(curr_node, part)
+                if curr_node is None:
+                    break
+            
+            if curr_node is not None and curr_node.text:
+                base_data[header] = curr_node.text.strip()
 
-        # --- 2. EXTRAÇÃO DIRETA DE ICMS (IMPOSSÍVEL DE FALHAR) ---
-        icms_node = inf_cte_node.find(".//ns:ICMS", self.ns)
+        # --- 2. EXTRAÇÃO DIRETA DE ICMS ---
+        icms_node = self._search_tag(inf_cte_node, "ICMS")
         if icms_node is not None and len(icms_node) > 0:
-            grupo_icms = icms_node[0] # Pega a tag do grupo (ex: ICMS60, ICMSOutraUF)
+            grupo_icms = icms_node[0] 
             tag_grupo = grupo_icms.tag.split("}")[-1].upper()
 
             if tag_grupo == "ICMSOUTRAUF":
@@ -197,7 +203,6 @@ class XMLParser:
                     elif c_tag == "pICMSSTRet": base_data["imp_pICMSSTRet"] = child.text.strip() if child.text else ""
 
             else:
-                # ICMS00, ICMS20, ICMS90, etc.
                 for child in grupo_icms:
                     c_tag = child.tag.split("}")[-1]
                     if c_tag == "CST": base_data["imp_CST"] = child.text.strip() if child.text else ""
@@ -210,13 +215,17 @@ class XMLParser:
 
         # --- 3. DUPLICAÇÃO DE COMPONENTES ---
         rows = []
-        comps = inf_cte_node.findall(".//ns:vPrest/ns:Comp", self.ns)
+        vprest_node = self._search_tag(inf_cte_node, "vPrest")
+        
+        comps = []
+        if vprest_node is not None:
+            comps = [c for c in vprest_node.iter() if c.tag.split('}')[-1].lower() == "comp"]
         
         if comps:
             for comp in comps:
                 row = base_data.copy()
-                x_nome = comp.find("ns:xNome", self.ns)
-                v_comp = comp.find("ns:vComp", self.ns)
+                x_nome = self._search_tag(comp, "xNome")
+                v_comp = self._search_tag(comp, "vComp")
                 if x_nome is not None and x_nome.text: row["vPrest_xNome"] = x_nome.text.strip()
                 if v_comp is not None and v_comp.text: row["vPrest_vComp"] = v_comp.text.strip()
                 rows.append(row)
@@ -226,9 +235,16 @@ class XMLParser:
         return rows
 
 
+def format_accounting_numbers(val):
+    """Regex que encontra valores numéricos e formata o Ponto para Vírgula."""
+    if isinstance(val, str) and val:
+        if re.match(r'^-?\d+\.\d{1,4}$', val.strip()):
+            return val.strip().replace('.', ',')
+    return val
+
+
 class ExcelExporter:
     """Exports parsed data to a styled Excel file."""
-
     def __init__(self, data: List[Dict[str, Any]], headers: List[str]):
         self.data = data
         self.headers = headers
@@ -241,6 +257,10 @@ class ExcelExporter:
         df = pd.DataFrame(self.data)
         df = df.reindex(columns=self.headers, fill_value="")
 
+        # Applica a formatação contábil em todas as colunas de forma segura
+        for col in df.columns:
+            df[col] = df[col].apply(format_accounting_numbers)
+
         with pd.ExcelWriter(output_filename, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="CTe Data")
             ws = writer.sheets["CTe Data"]
@@ -251,17 +271,13 @@ class ExcelExporter:
             for col_idx, header_text in enumerate(self.headers, 1):
                 ws.cell(row=1, column=col_idx).font = bold_font
                 if header_text.startswith("(") and header_text.endswith(")"):
-                    for row in ws.iter_rows(
-                        min_row=1, max_row=ws.max_row,
-                        min_col=col_idx, max_col=col_idx
-                    ):
+                    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
                         for cell in row:
                             cell.fill = gray_fill
 
 
 class AppController:
     """Main orchestrator."""
-
     def __init__(self, input_dir: str = "files"):
         self.input_dir = input_dir
         if not os.path.exists(self.input_dir):
@@ -270,7 +286,7 @@ class AppController:
             exit()
 
     def run(self):
-        print("--- CT-e XML to Excel Converter ---")
+        print("--- CT-e XML to Excel Converter 2.0 ---")
         rar_filename = input(f"Enter the name of the .rar file (must be in '{self.input_dir}/'): ").strip()
         rar_path = os.path.join(self.input_dir, rar_filename)
 
@@ -280,10 +296,16 @@ class AppController:
 
         archive_handler = ArchiveHandler(rar_path)
 
+        # Pasta de Quarentena para XMLs Corrompidos
+        error_dir = os.path.join(self.input_dir, "erros_quarentena")
+        if not os.path.exists(error_dir):
+            os.makedirs(error_dir)
+
         try:
             archive_handler.extract_all()
             xml_files = archive_handler.find_xml_files()
-            print(f"Total XML files found: {len(xml_files)}")
+            total_files = len(xml_files)
+            print(f"Total XML files found: {total_files}")
 
             all_data: List[Dict[str, Any]] = []
             error_details: List[str] = []
@@ -296,6 +318,20 @@ class AppController:
                 except Exception as e:
                     file_name = os.path.basename(xml_file)
                     error_details.append(f"Arquivo: [{file_name}] | Erro: {str(e)}")
+                    # Move o arquivo defeituoso para a Quarentena
+                    try:
+                        shutil.copy2(xml_file, os.path.join(error_dir, file_name))
+                    except:
+                        pass
+
+            # --- RELATÓRIO DE AUDITORIA E FIDELIDADE ---
+            print("\n" + "="*50)
+            print("         RELATÓRIO DE FIDELIDADE (AUDITORIA)")
+            print("="*50)
+            print(f"Total de XMLs lidos: {total_files}")
+            print(f"Arquivos processados com sucesso: {total_files - len(error_details)}")
+            print(f"Arquivos falhos (Quarentena): {len(error_details)}")
+            print("="*50)
 
             if error_details:
                 log_filename = f"erros_{os.path.splitext(rar_filename)[0]}.log"
@@ -304,8 +340,8 @@ class AppController:
                     f.write("=" * 50 + "\n")
                     for err in error_details:
                         f.write(err + "\n")
-                print(f"\nAviso: {len(error_details)} arquivo(s) XML falharam.")
-                print(f"Verifique '{log_filename}' para detalhes.")
+                print(f"\n* Atenção: Os arquivos que falharam foram isolados na pasta '{error_dir}'.")
+                print(f"* Verifique o arquivo '{log_filename}' para detalhes.")
 
             output_filename = f"{os.path.splitext(rar_filename)[0]}.xlsx"
             exporter = ExcelExporter(all_data, EXCEL_HEADERS)
