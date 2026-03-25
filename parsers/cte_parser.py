@@ -1,11 +1,12 @@
+# parsers/cte_parser.py
+
 import xml.etree.ElementTree as ET
 from typing import Dict
 from core.constants import XML_NAMESPACE, EXCEL_HEADERS, SKIP_COLS
 
 class CTeParser:
     """
-    Parser especializado em CT-e. 
-    Implementa criação dinâmica de colunas para componentes e extração de NF-es vinculadas.
+    Parser especializado em CT-e com Cache de Memória (Alta Performance).
     """
 
     def __init__(self, file_path: str):
@@ -13,13 +14,25 @@ class CTeParser:
         self.ns = XML_NAMESPACE
         self.tree = ET.parse(file_path)
         self.root = self.tree.getroot()
+        # Dicionário para guardar as buscas em memória (Otimização de CPU)
+        self._cache = {}
 
     def _search_tag(self, parent_node: ET.Element, target_tag: str) -> ET.Element:
-        """Faz a busca ignorando o namespace, varrendo os filhos diretos e descendentes."""
+        """Faz a busca com Cache. Se já buscou antes, retorna da memória instantaneamente."""
+        if parent_node is None:
+            return None
+            
+        cache_key = (parent_node, target_tag)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         target = target_tag.lower()
         for child in parent_node.iter():
             if child.tag.split('}')[-1].lower() == target:
+                self._cache[cache_key] = child
                 return child
+                
+        self._cache[cache_key] = None
         return None
 
     def extract_data(self) -> Dict[str, str]:
@@ -32,7 +45,7 @@ class CTeParser:
 
         base_data["chv_cte_Id"] = inf_cte_node.get("Id", "").replace("CTe", "")
 
-        # --- 1. EXTRAÇÃO FUZZY HIERÁRQUICA (De/Para Simples) ---
+        # --- 1. EXTRAÇÃO FUZZY HIERÁRQUICA COM CACHE ---
         for header in EXCEL_HEADERS:
             if header.startswith("(") or header in SKIP_COLS:
                 continue
@@ -88,7 +101,7 @@ class CTeParser:
                     elif c_tag == "vICMSSTRet": base_data["imp_vICMSSTRet"] = child.text.strip() if child.text else ""
                     elif c_tag == "pICMSSTRet": base_data["imp_pICMSSTRet"] = child.text.strip() if child.text else ""
 
-        # --- 4. COMPONENTES COMERCIAIS DINÂMICOS (Sem Duplicar Linha) ---
+        # --- 4. COMPONENTES COMERCIAIS DINÂMICOS ---
         vprest_node = self._search_tag(inf_cte_node, "vPrest")
         if vprest_node is not None:
             comps = [c for c in vprest_node.iter() if c.tag.split('}')[-1].lower() == "comp"]
@@ -97,7 +110,6 @@ class CTeParser:
                 v_comp = self._search_tag(comp, "vComp")
                 
                 if x_nome is not None and x_nome.text and v_comp is not None and v_comp.text:
-                    # Normaliza o nome do componente para virar nome de coluna (Ex: "VALOR FRETE" -> "comp_VALOR_FRETE")
                     nome_coluna = f"comp_{x_nome.text.strip().upper().replace(' ', '_')}"
                     base_data[nome_coluna] = v_comp.text.strip()
 
