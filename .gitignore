@@ -2,3 +2,9 @@ data/
 files/
 *.xlsx
 __pycache__/
+*.txt
+*.rar
+*.zip
+*.xml
+*.log
+*.exe
