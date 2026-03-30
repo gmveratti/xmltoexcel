@@ -1,10 +1,38 @@
+# Dados e arquivos de saída
 data/
 files/
 *.xlsx
-__pycache__/
-*.txt
+*.log
+
+# Arquivos compactados e XML
 *.rar
 *.zip
 *.xml
-*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Ambiente virtual
+venv/
+.venv/
+env/
+
+# IDEs
+.idea/
+.vscode/
+*.code-workspace
+
+# Sistema
+.env
 *.exe
+Thumbs.db
+.DS_Store
+
+# Arquivos do code review
+*.txt

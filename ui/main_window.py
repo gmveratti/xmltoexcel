@@ -17,7 +17,7 @@ from core.worker import process_single_xml  # Importando o worker isolado
 class CTetoExcelApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Pipeline de Dados Fiscais (CT-e)")
+        self.root.title("Conversor de XML para Excel")
         self.root.geometry("600x380")
         self.root.resizable(False, False)
         
@@ -120,7 +120,7 @@ class CTetoExcelApp:
             error_dir = os.path.join(dst_dir, "erros_quarentena")
             os.makedirs(error_dir, exist_ok=True)
 
-            self.queue.put(("STATUS", "Descompactando arquivos (pode levar alguns segundos)..."))
+            self.queue.put(("STATUS", "Descompactando arquivos (pode levar alguns minutos)..."))
             
             with ArchiveHandler(rar_path) as archive_handler:
                 archive_handler.extract_all()
