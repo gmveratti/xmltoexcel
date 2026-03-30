@@ -14,7 +14,7 @@ if os.name == 'nt':
         rarfile.UNRAR_TOOL = unrar_path
 
 class ArchiveHandler:
-    """Lida com a extração recursiva de arquivos .rar e .zip e busca de XMLs."""
+    """Extração recursiva segura com Context Manager contra falhas."""
 
     def __init__(self, archive_path: str):
         if not os.path.exists(archive_path):
@@ -22,8 +22,17 @@ class ArchiveHandler:
         self.archive_path = archive_path
         self.temp_dir = tempfile.mkdtemp(prefix="cte_extraction_")
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cleanup()
+
+    def _is_safe_path(self, extract_path: str, target_path: str) -> bool:
+        """Evita Zip Bomb / Path Traversal malicioso (../)"""
+        return os.path.commonpath([os.path.abspath(extract_path), os.path.abspath(target_path)]) == os.path.abspath(extract_path)
+
     def _extract_recursive(self):
-        """Busca e extrai arquivos compactados dentro da pasta temporária até que não reste nenhum."""
         while True:
             archives_found = False
             for root, _, files in os.walk(self.temp_dir):
@@ -33,43 +42,41 @@ class ArchiveHandler:
                     try:
                         if file.lower().endswith(".rar"):
                             with rarfile.RarFile(file_path) as rf:
-                                rf.extractall(path=extract_path)
+                                for member in rf.infolist():
+                                    if self._is_safe_path(extract_path, os.path.join(extract_path, member.filename)):
+                                        rf.extract(member, path=extract_path)
                             os.remove(file_path)
                             archives_found = True
                         elif file.lower().endswith(".zip"):
                             with zipfile.ZipFile(file_path) as zf:
-                                zf.extractall(path=extract_path)
+                                for member in zf.infolist():
+                                    if self._is_safe_path(extract_path, os.path.join(extract_path, member.filename)):
+                                        zf.extract(member, path=extract_path)
                             os.remove(file_path)
                             archives_found = True
-                    except Exception:
+                    except Exception as e:
+                        print(f"Aviso: Falha ao extrair arquivo aninhado '{file}': {e}")
                         os.rename(file_path, file_path + ".failed")
             if not archives_found:
                 break
 
     def extract_all(self):
-        """Ponto de entrada para a extração do arquivo principal."""
         print(f"Extraindo arquivo principal: {os.path.basename(self.archive_path)}...")
         try:
             with rarfile.RarFile(self.archive_path) as rf:
-                rf.extractall(path=self.temp_dir)
-            print("Escaneando por arquivos compactados aninhados...")
+                for member in rf.infolist():
+                    if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
+                        rf.extract(member, path=self.temp_dir)
             self._extract_recursive()
         except rarfile.Error as e:
-            raise RuntimeError(f"Falha ao extrair RAR. Verifique se o 'unrar' está instalado. Detalhes: {e}")
+            raise RuntimeError(f"Falha crítica no UnRAR. Detalhes: {e}")
 
     def find_xml_files(self) -> List[str]:
-        """Varre a pasta temporária e retorna uma lista com o caminho de todos os .xml encontrados."""
-        xml_files = []
-        for root, _, files in os.walk(self.temp_dir):
-            for file in files:
-                if file.lower().endswith(".xml"):
-                    xml_files.append(os.path.join(root, file))
-        return xml_files
+        return [os.path.join(root, f) for root, _, files in os.walk(self.temp_dir) for f in files if f.lower().endswith(".xml")]
 
     def cleanup(self):
-        """Remove a pasta temporária do disco para liberar espaço."""
         if os.path.exists(self.temp_dir):
             try:
                 shutil.rmtree(self.temp_dir)
-            except OSError as e:
-                print(f"Aviso: Não foi possível limpar a pasta temporária {self.temp_dir}: {e}")
+            except OSError:
+                pass

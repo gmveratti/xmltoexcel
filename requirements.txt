@@ -1,4 +1,3 @@
 openpyxl
 rarfile
-pandas
 tqdm
