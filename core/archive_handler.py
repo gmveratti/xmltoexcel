@@ -63,13 +63,23 @@ class ArchiveHandler:
     def extract_all(self):
         print(f"Extraindo arquivo principal: {os.path.basename(self.archive_path)}...")
         try:
-            with rarfile.RarFile(self.archive_path) as rf:
-                for member in rf.infolist():
-                    if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
-                        rf.extract(member, path=self.temp_dir)
+            if self.archive_path.lower().endswith('.zip'):
+                with zipfile.ZipFile(self.archive_path) as zf:
+                    for member in zf.infolist():
+                        if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
+                            zf.extract(member, path=self.temp_dir)
+            else:
+                with rarfile.RarFile(self.archive_path) as rf:
+                    for member in rf.infolist():
+                        if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
+                            rf.extract(member, path=self.temp_dir)
             self._extract_recursive()
+        except zipfile.BadZipFile as e:
+            raise RuntimeError(f"Falha ao ler arquivo ZIP: {e}")
         except rarfile.Error as e:
             raise RuntimeError(f"Falha crítica no UnRAR. Detalhes: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Falha ao extrair arquivo principal. Detalhes: {e}")
 
     def find_xml_files(self) -> List[str]:
         return [os.path.join(root, f) for root, _, files in os.walk(self.temp_dir) for f in files if f.lower().endswith(".xml")]
