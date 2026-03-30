@@ -106,7 +106,9 @@ class CTetoExcelApp:
             messagebox.showerror("Erro", "O arquivo informado não existe.")
             return
 
+        # BUG RESOLVIDO AQUI: Dispara o cronómetro no milissegundo em que clica no botão
         self.is_processing = True
+        self.start_time = time.time()
         self.btn_start.config(state=tk.DISABLED)
         self.src_entry.config(state=tk.DISABLED)
         self.dst_entry.config(state=tk.DISABLED)
@@ -118,7 +120,7 @@ class CTetoExcelApp:
             error_dir = os.path.join(dst_dir, "erros_quarentena")
             os.makedirs(error_dir, exist_ok=True)
 
-            self.queue.put(("STATUS", "Descompactando arquivos..."))
+            self.queue.put(("STATUS", "Descompactando arquivos (pode levar alguns segundos)..."))
             
             with ArchiveHandler(rar_path) as archive_handler:
                 archive_handler.extract_all()
@@ -167,7 +169,8 @@ class CTetoExcelApp:
             self.queue.put(("FATAL_ERROR", str(e)))
 
     def check_queue(self):
-        if self.is_processing:
+        # BUG RESOLVIDO AQUI: Só atualiza se o start_time já foi inicializado (> 0)
+        if self.is_processing and self.start_time > 0:
             elapsed = int(time.time() - self.start_time)
             mins, secs = divmod(elapsed, 60)
             self.lbl_time.config(text=f"Tempo: {mins:02d}:{secs:02d}")
@@ -180,7 +183,6 @@ class CTetoExcelApp:
                 if msg_type == "STATUS":
                     self.lbl_status.config(text=msg[1], foreground="blue")
                 elif msg_type == "START":
-                    self.start_time = time.time()
                     self.progress_bar['maximum'] = msg[1]
                     self.lbl_count.config(text=f"Notas: 0 / {msg[1]} (0.0%)")
                 elif msg_type == "PROGRESS":
@@ -203,8 +205,11 @@ class CTetoExcelApp:
 
     def reset_ui(self):
         self.is_processing = False
+        self.start_time = 0
         self.btn_start.config(state=tk.NORMAL)
         self.src_entry.config(state=tk.NORMAL)
         self.dst_entry.config(state=tk.NORMAL)
         self.progress_var.set(0)
         self.lbl_status.config(text="Aguardando início...", foreground="gray")
+        self.lbl_count.config(text="Notas: 0 / 0 (0%)")
+        self.lbl_time.config(text="Tempo: 00:00") # BUG RESOLVIDO AQUI: Garante que visualmente ZERE
