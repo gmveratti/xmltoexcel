@@ -1,65 +1,86 @@
 # core/excel_exporter.py
 
-import re
 from typing import List, Dict, Any
 import openpyxl
 from openpyxl.styles import PatternFill, Font
 
-def format_accounting_numbers(val):
-    """Regex que encontra valores numéricos e formata o Ponto (.) para Vírgula (,)."""
-    if isinstance(val, str) and val:
-        if re.match(r'^-?\d+\.\d{1,4}$', val.strip()):
-            return val.strip().replace('.', ',')
-    return val
-
 class ExcelExporter:
-    """Exporta para Excel usando APENAS openpyxl (Zero Pandas = -100MB de peso)."""
+    """Exporta para Excel separando Notas e Eventos em abas distintas."""
     
-    def __init__(self, data: List[Dict[str, Any]], base_headers: List[str]):
-        self.data = data
-        self.base_headers = base_headers
+    def __init__(self, cte_data: List[Dict[str, Any]], cte_headers: List[str], event_data: List[Dict[str, Any]] = None):
+        self.cte_data = cte_data
+        self.cte_headers = cte_headers
+        self.event_data = event_data or []
 
     def export(self, output_filename: str):
-        if not self.data:
-            print("Aviso: Nenhum dado para exportar.")
+        if not self.cte_data and not self.event_data:
+            print("Aviso: Nenhum dado válido para exportar.")
             return
-            
-        print(f"Gerando arquivo Excel ({len(self.data)} linhas): {output_filename}...")
-
-        # Coleta colunas dinâmicas criadas em tempo de execução
-        dynamic_cols = set()
-        for row in self.data:
-            for key in row.keys():
-                if key not in self.base_headers and key.startswith("comp_"):
-                    dynamic_cols.add(key)
-        
-        final_headers = self.base_headers + sorted(list(dynamic_cols))
 
         wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "CTe Data"
+        
+        # --- ABA 1: CT-E DATA ---
+        ws_cte = wb.active
+        ws_cte.title = "CTe Data"
+        self._build_cte_sheet(ws_cte)
 
+        # --- ABA 2: EVENTOS (Se existirem) ---
+        if self.event_data:
+            ws_events = wb.create_sheet(title="Eventos e Correções")
+            self._build_events_sheet(ws_events)
+
+        wb.save(output_filename)
+
+    def _build_cte_sheet(self, ws):
         gray_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
         bold_font = Font(bold=True)
+        accounting_format = '#,##0.00'
 
-        # Escreve o Cabeçalho
+        dynamic_cols = set()
+        for row in self.cte_data:
+            for key in row.keys():
+                if key not in self.cte_headers and key.startswith("comp_"):
+                    dynamic_cols.add(key)
+        
+        final_headers = self.cte_headers + sorted(list(dynamic_cols))
+
         for col_idx, header in enumerate(final_headers, 1):
             cell = ws.cell(row=1, column=col_idx, value=header)
             cell.font = bold_font
             if header.startswith("(") and header.endswith(")"):
                 cell.fill = gray_fill
 
-        # Escreve os Dados (O(N) Alta performance)
-        for row_idx, row_data in enumerate(self.data, 2):
+        for row_idx, row_data in enumerate(self.cte_data, 2):
             for col_idx, header in enumerate(final_headers, 1):
-                val = row_data.get(header, "")
+                raw_val = row_data.get(header, "")
+                cell = ws.cell(row=row_idx, column=col_idx)
                 
-                # Só roda a Regex em colunas que sabemos que podem ter números (Economia de CPU)
-                if val and (header.startswith("imp_") or header.startswith("vPrest_") or header.startswith("comp_")):
-                    val = format_accounting_numbers(val)
-                
-                cell = ws.cell(row=row_idx, column=col_idx, value=val)
                 if header.startswith("(") and header.endswith(")"):
                     cell.fill = gray_fill
+                    continue
 
-        wb.save(output_filename)
+                if raw_val and (header.startswith("imp_") or header.startswith("vPrest_") or header.startswith("comp_")):
+                    try:
+                        cell.value = float(raw_val.strip())
+                        cell.number_format = accounting_format
+                    except ValueError:
+                        cell.value = raw_val
+                else:
+                    cell.value = raw_val
+
+    def _build_events_sheet(self, ws):
+        bold_font = Font(bold=True)
+        # Cabeçalhos fixos para eventos
+        headers = ["Chave de Acesso (Referência)", "Tipo de Evento", "Data do Evento", "Detalhes / Justificativa"]
+        
+        for col_idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = bold_font
+
+        for row_idx, row_data in enumerate(self.event_data, 2):
+            for col_idx, header in enumerate(headers, 1):
+                ws.cell(row=row_idx, column=col_idx, value=row_data.get(header, ""))
+                
+        # Ajusta a largura da coluna de detalhes
+        ws.column_dimensions['D'].width = 80
+        ws.column_dimensions['A'].width = 50

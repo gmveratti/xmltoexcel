@@ -136,16 +136,24 @@ class CTetoExcelApp:
                 self.queue.put(("START", total_files))
                 self.queue.put(("STATUS", "Extraindo dados das notas (Multiprocessamento)..."))
                 
-                all_data, error_details = [], []
+                all_cte_data = []
+                all_event_data = []
+                error_details = []
                 processed_count = 0
 
                 with concurrent.futures.ProcessPoolExecutor() as executor:
                     future_to_xml = {executor.submit(process_single_xml, xml): xml for xml in xml_files}
                     
                     for future in concurrent.futures.as_completed(future_to_xml):
-                        row_data, error_info = future.result()
+                        result_data, error_info = future.result()
                         
-                        if row_data: all_data.append(row_data)
+                        if result_data:
+                            data_type, row_data = result_data
+                            if data_type == "CTE":
+                                all_cte_data.append(row_data)
+                            elif data_type == "EVENT":
+                                all_event_data.append(row_data)
+                        
                         if error_info:
                             xml_file, error_msg, error_trace = error_info
                             file_name = os.path.basename(xml_file)
@@ -162,8 +170,12 @@ class CTetoExcelApp:
                 base_name = os.path.splitext(os.path.basename(rar_path))[0]
                 output_filename = os.path.join(dst_dir, f"{base_name}.xlsx")
                 
-                ExcelExporter(all_data, EXCEL_HEADERS).export(output_filename)
-                self.queue.put(("DONE", total_files, len(all_data), len(error_details)))
+                # Agora enviamos as duas listas para o exportador!
+                ExcelExporter(all_cte_data, EXCEL_HEADERS, all_event_data).export(output_filename)
+                
+                # Conta total de ficheiros extraídos com sucesso
+                total_success = len(all_cte_data) + len(all_event_data)
+                self.queue.put(("DONE", total_files, total_success, len(error_details)))
                 
         except Exception as e:
             self.queue.put(("FATAL_ERROR", str(e)))
