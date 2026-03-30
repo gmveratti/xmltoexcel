@@ -45,7 +45,7 @@ class CTeParser:
         base_data = {header: "" for header in EXCEL_HEADERS}
         inf_cte_node = self.root.find(".//ns:infCte", self.ns)
         if inf_cte_node is None:
-            return base_data
+            return None
 
         base_data["chv_cte_Id"] = inf_cte_node.get("Id", "").replace("CTe", "")
 
