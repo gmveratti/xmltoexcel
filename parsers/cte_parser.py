@@ -1,10 +1,14 @@
 # parsers/cte_parser.py
 
-import xml.etree.ElementTree as ET
-from typing import Dict
-from core.constants import XML_NAMESPACE, EXCEL_HEADERS, SKIP_COLS
+import logging
+from typing import Dict, Optional, Any
 
-# Mapa de ICMS para evitar duplicação brutal de código (Refatoração Nível Sênior)
+from core.constants import XML_NAMESPACE, EXCEL_HEADERS, SKIP_COLS
+from parsers.base_parser import BaseXMLParser
+
+logger = logging.getLogger(__name__)
+
+# Mapa de ICMS para evitar duplicação brutal de código
 ICMS_MAP = {
     "ICMSOUTRAUF": {
         "CST": "imp_ICMSOutraUF_CST", "vBCOutraUF": "imp_ICMSOutraUF_vBCOutraUF",
@@ -20,29 +24,16 @@ ICMS_MAP = {
     }
 }
 
-class CTeParser:
+
+class CTeParser(BaseXMLParser):
+    """Parser especializado em ler XMLs de CT-e (Conhecimento de Transporte Eletrônico)."""
+
     def __init__(self, file_path: str):
-        self.file_path = file_path
+        super().__init__(file_path)
         self.ns = XML_NAMESPACE
-        self.tree = ET.parse(file_path)
-        self.root = self.tree.getroot()
 
-    def _safe_text(self, element: ET.Element) -> str:
-        """Helper para evitar repetição de .strip() e validação de Nones."""
-        return element.text.strip() if element is not None and element.text else ""
-
-    def _search_tag(self, parent_node: ET.Element, target_tag: str) -> ET.Element:
-        """Busca hierárquica focada nos filhos."""
-        if parent_node is None:
-            return None
-        target = target_tag.lower()
-        for child in parent_node.iter():
-            if child.tag.split('}')[-1].lower() == target:
-                return child
-        return None
-
-    def extract_data(self) -> Dict[str, str]:
-        base_data = {header: "" for header in EXCEL_HEADERS}
+    def extract_data(self) -> Optional[Dict[str, Any]]:
+        base_data: Dict[str, str] = {header: "" for header in EXCEL_HEADERS}
         inf_cte_node = self.root.find(".//ns:infCte", self.ns)
         if inf_cte_node is None:
             return None
@@ -69,10 +60,10 @@ class CTeParser:
         # 3. ICMS usando o ICMS_MAP
         icms_node = self._search_tag(inf_cte_node, "ICMS")
         if icms_node is not None and len(icms_node) > 0:
-            grupo_icms = icms_node[0] 
+            grupo_icms = icms_node[0]
             tag_grupo = grupo_icms.tag.split("}")[-1].upper()
             mapping = ICMS_MAP.get(tag_grupo, ICMS_MAP["DEFAULT"])
-            
+
             for child in grupo_icms:
                 c_tag = child.tag.split("}")[-1]
                 if c_tag in mapping:

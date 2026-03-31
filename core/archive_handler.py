@@ -1,17 +1,26 @@
 # core/archive_handler.py
 
+import logging
 import os
 import shutil
 import tempfile
 import zipfile
-import rarfile
+from collections import deque
+from pathlib import Path
 from typing import List
+
+import rarfile
+
+logger = logging.getLogger(__name__)
 
 # Configura o caminho do UnRAR no Windows se ele existir
 if os.name == 'nt':
     unrar_path = r"C:\Program Files\WinRAR\UnRAR.exe"
     if os.path.exists(unrar_path):
         rarfile.UNRAR_TOOL = unrar_path
+
+_ARCHIVE_EXTENSIONS = ('.rar', '.zip')
+
 
 class ArchiveHandler:
     """Extração recursiva segura com Context Manager contra falhas."""
@@ -30,38 +39,58 @@ class ArchiveHandler:
 
     def _is_safe_path(self, extract_path: str, target_path: str) -> bool:
         """Evita Zip Bomb / Path Traversal malicioso (../)"""
-        return os.path.commonpath([os.path.abspath(extract_path), os.path.abspath(target_path)]) == os.path.abspath(extract_path)
+        abs_extract = os.path.abspath(extract_path)
+        abs_target = os.path.abspath(target_path)
+        return os.path.commonpath([abs_extract, abs_target]) == abs_extract
+
+    def _extract_single_archive(self, file_path: str, extract_path: str) -> List[str]:
+        """Extrai um único arquivo e retorna novos archives encontrados."""
+        new_archives = []
+        try:
+            if file_path.lower().endswith(".rar"):
+                with rarfile.RarFile(file_path) as rf:
+                    for member in rf.infolist():
+                        if self._is_safe_path(extract_path, os.path.join(extract_path, member.filename)):
+                            rf.extract(member, path=extract_path)
+                            if member.filename.lower().endswith(_ARCHIVE_EXTENSIONS):
+                                new_archives.append(os.path.join(extract_path, member.filename))
+            elif file_path.lower().endswith(".zip"):
+                with zipfile.ZipFile(file_path) as zf:
+                    for member in zf.infolist():
+                        if self._is_safe_path(extract_path, os.path.join(extract_path, member.filename)):
+                            zf.extract(member, path=extract_path)
+                            if member.filename.lower().endswith(_ARCHIVE_EXTENSIONS):
+                                new_archives.append(os.path.join(extract_path, member.filename))
+            os.remove(file_path)
+        except Exception as e:
+            logger.warning("Falha ao extrair arquivo aninhado '%s': %s", os.path.basename(file_path), e)
+            try:
+                os.rename(file_path, file_path + ".failed")
+            except OSError:
+                pass
+        return new_archives
 
     def _extract_recursive(self):
-        while True:
-            archives_found = False
-            for root, _, files in os.walk(self.temp_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    extract_path = os.path.dirname(file_path)
-                    try:
-                        if file.lower().endswith(".rar"):
-                            with rarfile.RarFile(file_path) as rf:
-                                for member in rf.infolist():
-                                    if self._is_safe_path(extract_path, os.path.join(extract_path, member.filename)):
-                                        rf.extract(member, path=extract_path)
-                            os.remove(file_path)
-                            archives_found = True
-                        elif file.lower().endswith(".zip"):
-                            with zipfile.ZipFile(file_path) as zf:
-                                for member in zf.infolist():
-                                    if self._is_safe_path(extract_path, os.path.join(extract_path, member.filename)):
-                                        zf.extract(member, path=extract_path)
-                            os.remove(file_path)
-                            archives_found = True
-                    except Exception as e:
-                        print(f"Aviso: Falha ao extrair arquivo aninhado '{file}': {e}")
-                        os.rename(file_path, file_path + ".failed")
-            if not archives_found:
-                break
+        """Extração recursiva usando fila (deque) em vez de os.walk() repetido."""
+        archive_queue: deque = deque()
+
+        # Popular fila com archives encontrados na extração inicial
+        for root, _, files in os.walk(self.temp_dir):
+            for f in files:
+                if f.lower().endswith(_ARCHIVE_EXTENSIONS):
+                    archive_queue.append(os.path.join(root, f))
+
+        while archive_queue:
+            file_path = archive_queue.popleft()
+            if not os.path.exists(file_path):
+                continue
+            extract_path = os.path.dirname(file_path)
+            new_archives = self._extract_single_archive(file_path, extract_path)
+            archive_queue.extend(new_archives)
 
     def extract_all(self):
-        print(f"Extraindo arquivo principal: {os.path.basename(self.archive_path)}...")
+        """Extrai o arquivo principal e todos os aninhados recursivamente."""
+        logger.info("Extraindo arquivo principal: %s", os.path.basename(self.archive_path))
         try:
             if self.archive_path.lower().endswith('.zip'):
                 with zipfile.ZipFile(self.archive_path) as zf:
@@ -75,18 +104,20 @@ class ArchiveHandler:
                             rf.extract(member, path=self.temp_dir)
             self._extract_recursive()
         except zipfile.BadZipFile as e:
-            raise RuntimeError(f"Falha ao ler arquivo ZIP: {e}")
+            raise RuntimeError(f"Falha ao ler arquivo ZIP: {e}") from e
         except rarfile.Error as e:
-            raise RuntimeError(f"Falha crítica no UnRAR. Detalhes: {e}")
+            raise RuntimeError(f"Falha crítica no UnRAR. Detalhes: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Falha ao extrair arquivo principal. Detalhes: {e}")
+            raise RuntimeError(f"Falha ao extrair arquivo principal. Detalhes: {e}") from e
 
     def find_xml_files(self) -> List[str]:
-        return [os.path.join(root, f) for root, _, files in os.walk(self.temp_dir) for f in files if f.lower().endswith(".xml")]
+        """Busca todos os arquivos XML no diretório temporário."""
+        return [str(p) for p in Path(self.temp_dir).rglob("*.xml")]
 
     def cleanup(self):
+        """Remove o diretório temporário de extração."""
         if os.path.exists(self.temp_dir):
             try:
                 shutil.rmtree(self.temp_dir)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.warning("Não foi possível limpar diretório temporário '%s': %s", self.temp_dir, e)

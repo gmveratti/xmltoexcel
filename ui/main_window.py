@@ -1,32 +1,36 @@
 # ui/main_window.py
 
-import os
-import shutil
-import concurrent.futures
-import threading
+import logging
 import queue
+import threading
 import time
+import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from core.archive_handler import ArchiveHandler
-from core.excel_exporter import ExcelExporter
-from core.constants import EXCEL_HEADERS
-from core.worker import process_single_xml  # Importando o worker isolado
+from core.constants import WINDOW_TITLE, WINDOW_SIZE, QUEUE_POLL_INTERVAL_MS
+from core.models import (
+    StatusMessage, StartMessage, ProgressMessage,
+    NoFilesMessage, DoneMessage, FatalErrorMessage
+)
+from core.pipeline import ProcessingPipeline
+
+logger = logging.getLogger(__name__)
+
 
 class CTetoExcelApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Conversor de XML para Excel")
-        self.root.geometry("600x380")
+        self.root.title(WINDOW_TITLE)
+        self.root.geometry(WINDOW_SIZE)
         self.root.resizable(False, False)
-        
-        self.queue = queue.Queue()
+
+        self.queue: queue.Queue = queue.Queue()
         self.is_processing = False
         self.start_time = 0
-        
+
         self.setup_ui()
-        self.check_queue() 
+        self.check_queue()
 
     def setup_ui(self):
         style = ttk.Style()
@@ -38,7 +42,7 @@ class CTetoExcelApp:
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(main_frame, text="Configuração de Extração", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 10))
-        
+
         ttk.Label(main_frame, text="Arquivo Compactado (.rar / .zip):").pack(anchor=tk.W)
         src_frame = ttk.Frame(main_frame)
         src_frame.pack(fill=tk.X, pady=(0, 10))
@@ -54,7 +58,7 @@ class CTetoExcelApp:
         ttk.Button(dst_frame, text="Procurar...", command=self.browse_dst).pack(side=tk.RIGHT)
 
         ttk.Label(main_frame, text="Progresso da Conversão", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 5))
-        
+
         self.lbl_status = ttk.Label(main_frame, text="Aguardando início...", foreground="gray")
         self.lbl_status.pack(anchor=tk.W, pady=(0, 5))
 
@@ -73,7 +77,7 @@ class CTetoExcelApp:
         btn_frame.pack(fill=tk.X)
         self.btn_cancel = ttk.Button(btn_frame, text="Fechar", command=self.root.destroy)
         self.btn_cancel.pack(side=tk.RIGHT, padx=(5, 0))
-        
+
         self.btn_start = ttk.Button(btn_frame, text="Iniciar Processamento", command=self.start_processing)
         self.btn_start.pack(side=tk.RIGHT)
 
@@ -95,7 +99,8 @@ class CTetoExcelApp:
             self.dst_entry.insert(0, folder)
 
     def start_processing(self):
-        if self.is_processing: return
+        if self.is_processing:
+            return
         rar_path = self.src_entry.get()
         dst_dir = self.dst_entry.get()
 
@@ -106,82 +111,21 @@ class CTetoExcelApp:
             messagebox.showerror("Erro", "O arquivo informado não existe.")
             return
 
-        # BUG RESOLVIDO AQUI: Dispara o cronómetro no milissegundo em que clica no botão
         self.is_processing = True
         self.start_time = time.time()
         self.btn_start.config(state=tk.DISABLED)
         self.src_entry.config(state=tk.DISABLED)
         self.dst_entry.config(state=tk.DISABLED)
 
-        threading.Thread(target=self.process_files_thread, args=(rar_path, dst_dir), daemon=True).start()
+        # Barra indeterminate durante descompactação
+        self.progress_bar.config(mode='indeterminate')
+        self.progress_bar.start(10)
 
-    def process_files_thread(self, rar_path, dst_dir):
-        try:
-            error_dir = os.path.join(dst_dir, "erros_quarentena")
-            os.makedirs(error_dir, exist_ok=True)
-
-            self.queue.put(("STATUS", "Descompactando arquivos (pode levar alguns minutos)..."))
-            
-            with ArchiveHandler(rar_path) as archive_handler:
-                archive_handler.extract_all()
-                self.queue.put(("STATUS", "Buscando XMLs na pasta temporária..."))
-                
-                xml_files = archive_handler.find_xml_files()
-                total_files = len(xml_files)
-
-                if total_files == 0:
-                    self.queue.put(("NO_FILES",))
-                    return
-
-                self.queue.put(("START", total_files))
-                self.queue.put(("STATUS", "Extraindo dados das notas (Multiprocessamento)..."))
-                
-                all_cte_data = []
-                all_event_data = []
-                error_details = []
-                processed_count = 0
-
-                with concurrent.futures.ProcessPoolExecutor() as executor:
-                    future_to_xml = {executor.submit(process_single_xml, xml): xml for xml in xml_files}
-                    
-                    for future in concurrent.futures.as_completed(future_to_xml):
-                        result_data, error_info = future.result()
-                        
-                        if result_data:
-                            data_type, row_data = result_data
-                            if data_type == "CTE":
-                                all_cte_data.append(row_data)
-                            elif data_type == "EVENT":
-                                all_event_data.append(row_data)
-                        
-                        if error_info:
-                            xml_file, error_msg, error_trace = error_info
-                            file_name = os.path.basename(xml_file)
-                            error_details.append(f"Arquivo: [{file_name}] | Erro: {error_msg}")
-                            try:
-                                shutil.copy2(xml_file, os.path.join(error_dir, file_name))
-                            except: pass
-                        
-                        processed_count += 1
-                        if processed_count % 50 == 0 or processed_count == total_files:
-                            self.queue.put(("PROGRESS", processed_count, total_files))
-
-                self.queue.put(("STATUS", "Gerando arquivo Excel..."))
-                base_name = os.path.splitext(os.path.basename(rar_path))[0]
-                output_filename = os.path.join(dst_dir, f"{base_name}.xlsx")
-                
-                # Agora enviamos as duas listas para o exportador!
-                ExcelExporter(all_cte_data, EXCEL_HEADERS, all_event_data).export(output_filename)
-                
-                # Conta total de ficheiros extraídos com sucesso
-                total_success = len(all_cte_data) + len(all_event_data)
-                self.queue.put(("DONE", total_files, total_success, len(error_details)))
-                
-        except Exception as e:
-            self.queue.put(("FATAL_ERROR", str(e)))
+        pipeline = ProcessingPipeline(self.queue)
+        threading.Thread(target=pipeline.run, args=(rar_path, dst_dir), daemon=True).start()
 
     def check_queue(self):
-        # BUG RESOLVIDO AQUI: Só atualiza se o start_time já foi inicializado (> 0)
+        # Atualiza timer se estiver processando
         if self.is_processing and self.start_time > 0:
             elapsed = int(time.time() - self.start_time)
             mins, secs = divmod(elapsed, 60)
@@ -190,38 +134,54 @@ class CTetoExcelApp:
         while True:
             try:
                 msg = self.queue.get_nowait()
-                msg_type = msg[0]
-
-                if msg_type == "STATUS":
-                    self.lbl_status.config(text=msg[1], foreground="blue")
-                elif msg_type == "START":
-                    self.progress_bar['maximum'] = msg[1]
-                    self.lbl_count.config(text=f"Notas: 0 / {msg[1]} (0.0%)")
-                elif msg_type == "PROGRESS":
-                    self.progress_var.set(msg[1])
-                    self.lbl_count.config(text=f"Notas: {msg[1]} / {msg[2]} ({(msg[1] / msg[2]) * 100:.1f}%)")
-                elif msg_type == "NO_FILES":
-                    messagebox.showinfo("Aviso", "Nenhum arquivo XML foi encontrado.")
-                    self.reset_ui()
-                elif msg_type == "DONE":
-                    messagebox.showinfo("Sucesso", f"Concluído!\n\nLidos: {msg[1]}\nSucesso: {msg[2]}\nQuarentena: {msg[3]}")
-                    self.reset_ui()
-                elif msg_type == "FATAL_ERROR":
-                    messagebox.showerror("Erro Crítico", f"Erro fatal:\n{msg[1]}")
-                    self.reset_ui()
-
+                self._handle_message(msg)
             except queue.Empty:
                 break
 
-        self.root.after(100, self.check_queue)
+        self.root.after(QUEUE_POLL_INTERVAL_MS, self.check_queue)
+
+    def _handle_message(self, msg):
+        """Processa mensagens tipadas da queue."""
+        if isinstance(msg, StatusMessage):
+            self.lbl_status.config(text=msg.text, foreground="blue")
+
+        elif isinstance(msg, StartMessage):
+            # Mudar para modo determinado ao iniciar parsing
+            self.progress_bar.stop()
+            self.progress_bar.config(mode='determinate')
+            self.progress_bar['maximum'] = msg.total_files
+            self.progress_var.set(0)
+            self.lbl_count.config(text=f"Notas: 0 / {msg.total_files} (0.0%)")
+
+        elif isinstance(msg, ProgressMessage):
+            self.progress_var.set(msg.current)
+            pct = (msg.current / msg.total) * 100
+            self.lbl_count.config(text=f"Notas: {msg.current} / {msg.total} ({pct:.1f}%)")
+
+        elif isinstance(msg, NoFilesMessage):
+            messagebox.showinfo("Aviso", "Nenhum arquivo XML foi encontrado.")
+            self.reset_ui()
+
+        elif isinstance(msg, DoneMessage):
+            messagebox.showinfo(
+                "Sucesso",
+                f"Concluído!\n\nLidos: {msg.total_read}\nSucesso: {msg.total_success}\nQuarentena: {msg.total_errors}"
+            )
+            self.reset_ui()
+
+        elif isinstance(msg, FatalErrorMessage):
+            messagebox.showerror("Erro Crítico", f"Erro fatal:\n{msg.error_msg}")
+            self.reset_ui()
 
     def reset_ui(self):
         self.is_processing = False
         self.start_time = 0
+        self.progress_bar.stop()
+        self.progress_bar.config(mode='determinate')
         self.btn_start.config(state=tk.NORMAL)
         self.src_entry.config(state=tk.NORMAL)
         self.dst_entry.config(state=tk.NORMAL)
         self.progress_var.set(0)
         self.lbl_status.config(text="Aguardando início...", foreground="gray")
         self.lbl_count.config(text="Notas: 0 / 0 (0%)")
-        self.lbl_time.config(text="Tempo: 00:00") # BUG RESOLVIDO AQUI: Garante que visualmente ZERE
+        self.lbl_time.config(text="Tempo: 00:00")

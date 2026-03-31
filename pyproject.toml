@@ -1,11 +1,14 @@
 [project]
 name = "xmltoexcel"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "Pipeline de dados fiscais: extrai XMLs de CT-e de arquivos compactados e gera planilhas Excel organizadas."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
+    "defusedxml>=0.7.1",
     "openpyxl>=3.1.5",
     "rarfile>=4.2",
-    "tqdm>=4.67.3",
 ]
+
+[project.scripts]
+xmltoexcel = "main:main"

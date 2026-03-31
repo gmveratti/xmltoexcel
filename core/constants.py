@@ -1,4 +1,8 @@
-from typing import List, Dict
+# core/constants.py
+
+from typing import List, Dict, Set
+
+# ==================== XML / Fiscal ====================
 
 XML_NAMESPACE: Dict[str, str] = {"ns": "http://www.portalfiscal.inf.br/cte"}
 
@@ -42,14 +46,14 @@ EXCEL_HEADERS: List[str] = [
     "dest_fone", "(dest_enderDest)", "dest_enderDest_xLgr",
     "dest_enderDest_nro", "dest_enderDest_xBairro", "dest_enderDest_cMun",
     "dest_enderDest_xMun", "dest_enderDest_CEP", "dest_enderDest_UF",
-    "dest_enderDest_cPais", "dest_enderDest_xPais", "dest_email", 
-    "(vPrest)", "vPrest_vTPrest", "vPrest_vRec", 
+    "dest_enderDest_cPais", "dest_enderDest_xPais", "dest_email",
+    "(vPrest)", "vPrest_vTPrest", "vPrest_vRec",
     "(imp)", "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS",
     "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet", "(imp_ICMSOutraUF)",
     "imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF",
     "imp_ICMSOutraUF_pICMSOutraUF", "imp_ICMSOutraUF_vICMSOutraUF",
-    "imp_vTotTrib", "imp_infAdFisco", 
-    "(infCTeNorm)", "infNFe_chave", # <--- Nova coluna para as NF-e vinculadas
+    "imp_vTotTrib", "imp_infAdFisco",
+    "(infCTeNorm)", "infNFe_chave",
     "(infCTeNorm_infCarga)", "infCTeNorm_infCarga_vCarga",
     "infCTeNorm_infCarga_proPred", "(infCTeNorm_infCteSub)",
     "infCTeNorm_infCteSub_chCte", "infCTeNorm_infCteSub_indAlteraToma",
@@ -59,10 +63,33 @@ EXCEL_HEADERS: List[str] = [
 ]
 
 # Set para ignorar as colunas que têm tratamento especial (Impostos e NF-e)
-SKIP_COLS: set = {
+SKIP_COLS: Set[str] = {
     "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS",
     "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
     "imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF",
     "imp_ICMSOutraUF_pICMSOutraUF", "imp_ICMSOutraUF_vICMSOutraUF",
     "chv_cte_Id", "infNFe_chave"
 }
+
+# Cabeçalhos fixos para aba de eventos
+EVENT_SHEET_HEADERS: List[str] = [
+    "Chave de Acesso (Referência)",
+    "Tipo de Evento",
+    "Data do Evento",
+    "Detalhes / Justificativa"
+]
+
+# ==================== UI ====================
+
+WINDOW_TITLE: str = "Conversor de XML para Excel"
+WINDOW_SIZE: str = "600x380"
+QUEUE_POLL_INTERVAL_MS: int = 100
+PROGRESS_UPDATE_INTERVAL: int = 50
+
+# ==================== Excel Styling ====================
+
+GRAY_FILL_COLOR: str = "D3D3D3"
+ACCOUNTING_FORMAT: str = '#,##0.00'
+MAX_COLUMN_WIDTH: int = 50
+EVENT_DETAIL_COL_WIDTH: int = 80
+EVENT_KEY_COL_WIDTH: int = 50
