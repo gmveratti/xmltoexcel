@@ -4,18 +4,16 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 
-import defusedxml.ElementTree as ET
+import xml.etree.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
 
 class BaseXMLParser(ABC):
-    """Classe base para parsers de XML fiscal com proteção contra ataques XML."""
+    """Classe base para parsers de XML fiscal."""
 
-    def __init__(self, file_path: str):
-        self.file_path = file_path
-        self.tree = ET.parse(file_path)
-        self.root = self.tree.getroot()
+    def __init__(self, root: ET.Element):
+        self.root = root
 
     def _safe_text(self, element) -> str:
         """Extrai texto de um elemento XML com segurança contra None."""
