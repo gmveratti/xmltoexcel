@@ -1,0 +1,11 @@
+[project]
+name = "xmltoexcel"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "openpyxl>=3.1.5",
+    "rarfile>=4.2",
+    "tqdm>=4.67.3",
+]
