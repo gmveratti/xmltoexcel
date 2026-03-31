@@ -28,8 +28,8 @@ ICMS_MAP = {
 class CTeParser(BaseXMLParser):
     """Parser especializado em ler XMLs de CT-e (Conhecimento de Transporte Eletrônico)."""
 
-    def __init__(self, file_path: str):
-        super().__init__(file_path)
+    def __init__(self, root):
+        super().__init__(root)
         self.ns = XML_NAMESPACE
 
     def extract_data(self) -> Optional[Dict[str, Any]]:

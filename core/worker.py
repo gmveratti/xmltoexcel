@@ -2,6 +2,7 @@
 
 import logging
 import traceback
+import xml.etree.ElementTree as ET
 
 from core.models import ParseResult, ErrorInfo, WorkerResult
 from parsers.cte_parser import CTeParser
@@ -16,19 +17,23 @@ def process_single_xml(xml_file: str) -> WorkerResult:
     Decide automaticamente se o XML é um CT-e, um Evento, ou um lixo a ser ignorado.
     """
     try:
-        # 1. Tenta extrair como CT-e normal
-        cte_parser = CTeParser(xml_file)
+        # Abertura física no disco acontece UMA ÚNICA VEZ em alta velocidade
+        tree = ET.parse(xml_file)
+        root = tree.getroot()
+
+        # 1. Tenta extrair como CT-e normal (passa a memória, não o arquivo)
+        cte_parser = CTeParser(root)
         cte_data = cte_parser.extract_data()
         if cte_data is not None:
             return WorkerResult(result=ParseResult("CTE", cte_data), error=None)
 
-        # 2. Se não encontrou tag de CT-e, tenta extrair como Evento (Cancelamento/CC-e)
-        event_parser = CTeEventParser(xml_file)
+        # 2. Tenta extrair como Evento (usa a mesma memória, instantâneo)
+        event_parser = CTeEventParser(root)
         event_data = event_parser.extract_data()
         if event_data is not None:
             return WorkerResult(result=ParseResult("EVENT", event_data), error=None)
 
-        # 3. Se não for nenhum dos dois, ignora o arquivo
+        # 3. Ignora se não for nenhum dos dois
         return WorkerResult(result=ParseResult("IGNORE", None), error=None)
 
     except Exception as e:

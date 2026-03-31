@@ -5,7 +5,6 @@ description = "Pipeline de dados fiscais: extrai XMLs de CT-e de arquivos compac
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "defusedxml>=0.7.1",
     "openpyxl>=3.1.5",
     "rarfile>=4.2",
 ]
