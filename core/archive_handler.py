@@ -27,7 +27,7 @@ class ArchiveHandler:
 
     def __init__(self, archive_path: str):
         if not os.path.exists(archive_path):
-            raise FileNotFoundError(f"Arquivo não encontrado: {archive_path}")
+            raise FileNotFoundError(f"Arquivo ou pasta não encontrado(a): {archive_path}")
         self.archive_path = archive_path
         self.temp_dir = tempfile.mkdtemp(prefix="cte_extraction_")
 
@@ -89,26 +89,32 @@ class ArchiveHandler:
             archive_queue.extend(new_archives)
 
     def extract_all(self):
-        """Extrai o arquivo principal e todos os aninhados recursivamente."""
-        logger.info("Extraindo arquivo principal: %s", os.path.basename(self.archive_path))
+        """Extrai o arquivo principal ou copia a pasta e processa recursivamente."""
+        logger.info("Processando origem: %s", os.path.basename(self.archive_path))
         try:
-            if self.archive_path.lower().endswith('.zip'):
-                with zipfile.ZipFile(self.archive_path) as zf:
-                    for member in zf.infolist():
-                        if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
-                            zf.extract(member, path=self.temp_dir)
+            if os.path.isdir(self.archive_path):
+                # Se for diretório, copia todo o conteúdo para self.temp_dir
+                shutil.copytree(self.archive_path, self.temp_dir, dirs_exist_ok=True)
             else:
-                with rarfile.RarFile(self.archive_path) as rf:
-                    for member in rf.infolist():
-                        if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
-                            rf.extract(member, path=self.temp_dir)
+                if self.archive_path.lower().endswith('.zip'):
+                    with zipfile.ZipFile(self.archive_path) as zf:
+                        for member in zf.infolist():
+                            if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
+                                zf.extract(member, path=self.temp_dir)
+                else:
+                    with rarfile.RarFile(self.archive_path) as rf:
+                        for member in rf.infolist():
+                            if self._is_safe_path(self.temp_dir, os.path.join(self.temp_dir, member.filename)):
+                                rf.extract(member, path=self.temp_dir)
+            
+            # Chamada recursiva para extrair archives aninhados (mesmo se a origem for pasta)
             self._extract_recursive()
         except zipfile.BadZipFile as e:
             raise RuntimeError(f"Falha ao ler arquivo ZIP: {e}") from e
         except rarfile.Error as e:
             raise RuntimeError(f"Falha crítica no UnRAR. Detalhes: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Falha ao extrair arquivo principal. Detalhes: {e}") from e
+            raise RuntimeError(f"Falha no processamento da origem. Detalhes: {e}") from e
 
     def find_xml_files(self) -> List[str]:
         """Busca todos os arquivos XML no diretório temporário."""
