@@ -43,12 +43,13 @@ class CTetoExcelApp:
 
         ttk.Label(main_frame, text="Configuração de Extração", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 10))
 
-        ttk.Label(main_frame, text="Arquivo Compactado (.rar / .zip):").pack(anchor=tk.W)
+        ttk.Label(main_frame, text="Arquivo Compactado ou Pasta:").pack(anchor=tk.W)
         src_frame = ttk.Frame(main_frame)
         src_frame.pack(fill=tk.X, pady=(0, 10))
         self.src_entry = ttk.Entry(src_frame)
         self.src_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        ttk.Button(src_frame, text="Procurar...", command=self.browse_src).pack(side=tk.RIGHT)
+        ttk.Button(src_frame, text="Procurar Pasta...", command=self.browse_src_dir).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(src_frame, text="Procurar Arquivo...", command=self.browse_src_file).pack(side=tk.RIGHT)
 
         ttk.Label(main_frame, text="Pasta de Destino (Onde salvar o Excel):").pack(anchor=tk.W)
         dst_frame = ttk.Frame(main_frame)
@@ -81,7 +82,7 @@ class CTetoExcelApp:
         self.btn_start = ttk.Button(btn_frame, text="Iniciar Processamento", command=self.start_processing)
         self.btn_start.pack(side=tk.RIGHT)
 
-    def browse_src(self):
+    def browse_src_file(self):
         file_path = filedialog.askopenfilename(
             title="Selecione o arquivo",
             filetypes=[("Arquivos Compactados", "*.rar *.zip"), ("Todos os arquivos", "*.*")]
@@ -91,6 +92,14 @@ class CTetoExcelApp:
             self.src_entry.insert(0, file_path)
             if not self.dst_entry.get():
                 self.dst_entry.insert(0, os.path.dirname(file_path))
+
+    def browse_src_dir(self):
+        folder = filedialog.askdirectory(title="Selecione a pasta com os dados")
+        if folder:
+            self.src_entry.delete(0, tk.END)
+            self.src_entry.insert(0, folder)
+            if not self.dst_entry.get():
+                self.dst_entry.insert(0, folder)
 
     def browse_dst(self):
         folder = filedialog.askdirectory(title="Selecione a pasta de Destino")
@@ -105,10 +114,10 @@ class CTetoExcelApp:
         dst_dir = self.dst_entry.get()
 
         if not rar_path or not dst_dir:
-            messagebox.showwarning("Atenção", "Selecione o arquivo e a pasta de destino.")
+            messagebox.showwarning("Atenção", "Selecione a fonte de dados e a pasta de destino.")
             return
-        if not os.path.isfile(rar_path):
-            messagebox.showerror("Erro", "O arquivo informado não existe.")
+        if not (os.path.isfile(rar_path) or os.path.isdir(rar_path)):
+            messagebox.showerror("Erro", "O arquivo ou pasta informada não existe.")
             return
 
         self.is_processing = True
