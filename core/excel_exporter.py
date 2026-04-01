@@ -2,6 +2,7 @@
 
 import logging
 from typing import List, Dict, Any
+from datetime import datetime
 
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment
@@ -97,6 +98,19 @@ class ExcelExporter:
                 if header.startswith("(") and header.endswith(")"):
                     cell.fill = gray_fill
                     continue
+
+                # NOVA REGRA: Tratamento Nativo de Datas (Padrão BR)
+                if header == "ide_dhEmi" and raw_val:
+                    try:
+                        # Extrai a data do formato ISO (ex: 2025-09-01T18:14:00-03:00)
+                        dt_obj = datetime.fromisoformat(raw_val)
+                        # Remove o fuso horário (tz-naive) para o Excel aceitar nativamente
+                        dt_obj = dt_obj.replace(tzinfo=None)
+                        cell.value = dt_obj
+                        cell.number_format = 'DD/MM/YYYY HH:MM:SS'
+                        continue  # Processado com sucesso, pula para a próxima célula
+                    except ValueError:
+                        pass # Se por acaso a tag vier com texto sujo, cai no fallback de string normal
 
                 # 3. Colunas de Valor Contábil -> Cast para float e tipagem com accounting format
                 if header in accounting_columns:
