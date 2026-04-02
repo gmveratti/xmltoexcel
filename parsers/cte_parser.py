@@ -2,6 +2,7 @@
 
 import logging
 from typing import Dict, Optional, Any
+import xml.etree.ElementTree as ET
 
 from core.constants import XML_NAMESPACE, EXCEL_HEADERS, SKIP_COLS
 from parsers.base_parser import BaseXMLParser
@@ -28,7 +29,8 @@ ICMS_MAP = {
 class CTeParser(BaseXMLParser):
     """Parser especializado em ler XMLs de CT-e (Conhecimento de Transporte Eletrônico)."""
 
-    def __init__(self, root):
+    def __init__(self, root: ET.Element):
+        # Envia a memória RAM diretamente para a classe pai
         super().__init__(root)
         self.ns = XML_NAMESPACE
 
@@ -80,7 +82,6 @@ class CTeParser(BaseXMLParser):
                 if nome and valor:
                     nome_limpo = nome.upper().replace(' ', '_')
                     
-                    # Funil de Normalização
                     if "PEDAGIO" in nome_limpo:
                         nome_coluna = "comp_PEDAGIO"
                     elif "FRETE" in nome_limpo:
@@ -90,18 +91,14 @@ class CTeParser(BaseXMLParser):
                     else:
                         nome_coluna = f"comp_{nome_limpo}"
 
-                    # LÓGICA DE FIDELIDADE (Soma Acumulativa)
-                    # Se já existe um valor nessa coluna (ex: 2 pedágios na mesma nota), ele soma!
                     if base_data.get(nome_coluna):
                         try:
                             valor_existente = float(base_data[nome_coluna])
                             valor_novo = float(valor)
                             base_data[nome_coluna] = str(valor_existente + valor_novo)
                         except ValueError:
-                            # Prevenção de erro caso o texto não seja um número
                             base_data[nome_coluna] = valor
                     else:
-                        # Se a coluna está vazia, apenas guarda o valor
                         base_data[nome_coluna] = valor
 
         return base_data
