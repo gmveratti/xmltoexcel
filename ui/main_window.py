@@ -28,6 +28,12 @@ class CTetoExcelApp:
         self.queue: queue.Queue = queue.Queue()
         self.is_processing = False
         self.start_time = 0
+        
+        # FASE 1: Evento de cancelamento seguro
+        self.cancel_event = threading.Event()
+        
+        # Interceta o clique no 'X' da janela para não deixar lixo temporário
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.setup_ui()
         self.check_queue()
@@ -43,13 +49,12 @@ class CTetoExcelApp:
 
         ttk.Label(main_frame, text="Configuração de Extração", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 10))
 
-        ttk.Label(main_frame, text="Arquivo Compactado ou Pasta:").pack(anchor=tk.W)
+        ttk.Label(main_frame, text="Arquivo Compactado (.rar / .zip):").pack(anchor=tk.W)
         src_frame = ttk.Frame(main_frame)
         src_frame.pack(fill=tk.X, pady=(0, 10))
         self.src_entry = ttk.Entry(src_frame)
         self.src_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        ttk.Button(src_frame, text="Procurar Pasta...", command=self.browse_src_dir).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(src_frame, text="Procurar Arquivo...", command=self.browse_src_file).pack(side=tk.RIGHT)
+        ttk.Button(src_frame, text="Procurar...", command=self.browse_src).pack(side=tk.RIGHT)
 
         ttk.Label(main_frame, text="Pasta de Destino (Onde salvar o Excel):").pack(anchor=tk.W)
         dst_frame = ttk.Frame(main_frame)
@@ -76,13 +81,13 @@ class CTetoExcelApp:
 
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X)
-        self.btn_cancel = ttk.Button(btn_frame, text="Fechar", command=self.root.destroy)
+        self.btn_cancel = ttk.Button(btn_frame, text="Cancelar", command=self.on_close)
         self.btn_cancel.pack(side=tk.RIGHT, padx=(5, 0))
 
         self.btn_start = ttk.Button(btn_frame, text="Iniciar Processamento", command=self.start_processing)
         self.btn_start.pack(side=tk.RIGHT)
 
-    def browse_src_file(self):
+    def browse_src(self):
         file_path = filedialog.askopenfilename(
             title="Selecione o arquivo",
             filetypes=[("Arquivos Compactados", "*.rar *.zip"), ("Todos os arquivos", "*.*")]
@@ -92,14 +97,6 @@ class CTetoExcelApp:
             self.src_entry.insert(0, file_path)
             if not self.dst_entry.get():
                 self.dst_entry.insert(0, os.path.dirname(file_path))
-
-    def browse_src_dir(self):
-        folder = filedialog.askdirectory(title="Selecione a pasta com os dados")
-        if folder:
-            self.src_entry.delete(0, tk.END)
-            self.src_entry.insert(0, folder)
-            if not self.dst_entry.get():
-                self.dst_entry.insert(0, folder)
 
     def browse_dst(self):
         folder = filedialog.askdirectory(title="Selecione a pasta de Destino")
@@ -114,27 +111,28 @@ class CTetoExcelApp:
         dst_dir = self.dst_entry.get()
 
         if not rar_path or not dst_dir:
-            messagebox.showwarning("Atenção", "Selecione a fonte de dados e a pasta de destino.")
+            messagebox.showwarning("Atenção", "Selecione o arquivo e a pasta de destino.")
             return
-        if not (os.path.isfile(rar_path) or os.path.isdir(rar_path)):
-            messagebox.showerror("Erro", "O arquivo ou pasta informada não existe.")
+        if not os.path.isfile(rar_path):
+            messagebox.showerror("Erro", "O arquivo informado não existe.")
             return
 
         self.is_processing = True
         self.start_time = time.time()
+        self.cancel_event.clear()
+        
         self.btn_start.config(state=tk.DISABLED)
         self.src_entry.config(state=tk.DISABLED)
         self.dst_entry.config(state=tk.DISABLED)
 
-        # Barra indeterminate durante descompactação
         self.progress_bar.config(mode='indeterminate')
         self.progress_bar.start(10)
 
         pipeline = ProcessingPipeline(self.queue)
-        threading.Thread(target=pipeline.run, args=(rar_path, dst_dir), daemon=True).start()
+        # Passar o cancel_event para o pipeline
+        threading.Thread(target=pipeline.run, args=(rar_path, dst_dir, self.cancel_event), daemon=True).start()
 
     def check_queue(self):
-        # Atualiza timer se estiver processando
         if self.is_processing and self.start_time > 0:
             elapsed = int(time.time() - self.start_time)
             mins, secs = divmod(elapsed, 60)
@@ -150,12 +148,10 @@ class CTetoExcelApp:
         self.root.after(QUEUE_POLL_INTERVAL_MS, self.check_queue)
 
     def _handle_message(self, msg):
-        """Processa mensagens tipadas da queue."""
         if isinstance(msg, StatusMessage):
             self.lbl_status.config(text=msg.text, foreground="blue")
 
         elif isinstance(msg, StartMessage):
-            # Mudar para modo determinado ao iniciar parsing
             self.progress_bar.stop()
             self.progress_bar.config(mode='determinate')
             self.progress_bar['maximum'] = msg.total_files
@@ -194,3 +190,16 @@ class CTetoExcelApp:
         self.lbl_status.config(text="Aguardando início...", foreground="gray")
         self.lbl_count.config(text="Notas: 0 / 0 (0%)")
         self.lbl_time.config(text="Tempo: 00:00")
+
+    def on_close(self):
+        """Protocolo de fecho seguro da aplicação."""
+        if self.is_processing:
+            if messagebox.askokcancel("Cancelar", "O processamento está a decorrer. Deseja cancelar e sair?"):
+                self.lbl_status.config(text="A cancelar em segurança. A limpar ficheiros temporários...", foreground="red")
+                self.root.update()
+                # Emite o sinal de paragem
+                self.cancel_event.set()
+                # Dá tempo à thread para fechar e limpar a pasta self.temp_dir
+                self.root.after(1500, self.root.destroy)
+        else:
+            self.root.destroy()

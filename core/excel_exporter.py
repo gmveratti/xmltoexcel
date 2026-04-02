@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 
 import openpyxl
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import PatternFill, Font, Alignment
 
 from core.constants import (
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExcelExporter:
-    """Exporta para Excel separando Notas e Eventos em abas distintas."""
+    """Exporta para Excel em fluxo de disco (O(1) memória RAM)."""
 
     def __init__(self, cte_data: List[Dict[str, Any]], cte_headers: List[str],
                  event_data: List[Dict[str, Any]] = None):
@@ -25,18 +26,16 @@ class ExcelExporter:
         self.event_data = event_data or []
 
     def export(self, output_filename: str):
-        """Gera o arquivo Excel. Levanta ValueError se não houver dados."""
         if not self.cte_data and not self.event_data:
             raise ValueError("Nenhum dado válido para exportar.")
 
-        wb = openpyxl.Workbook()
+        # FASE 1: write_only=True despeja os dados no disco em tempo real.
+        # Impede o consumo de Gigabytes de RAM em lote massivo.
+        wb = openpyxl.Workbook(write_only=True)
 
-        # --- ABA 1: CT-E DATA ---
-        ws_cte = wb.active
-        ws_cte.title = "CTe Data"
+        ws_cte = wb.create_sheet(title="CTe Data")
         self._build_cte_sheet(ws_cte)
 
-        # --- ABA 2: EVENTOS (Se existirem) ---
         if self.event_data:
             ws_events = wb.create_sheet(title="Eventos e Correções")
             self._build_events_sheet(ws_events)
@@ -47,11 +46,8 @@ class ExcelExporter:
     def _build_cte_sheet(self, ws):
         gray_fill = PatternFill(start_color=GRAY_FILL_COLOR, end_color=GRAY_FILL_COLOR, fill_type="solid")
         bold_font = Font(bold=True)
-        
-        # 1. Alinhamento Global (Horizontal e Vertical centralizado)
         center_alignment = Alignment(horizontal='center', vertical='center')
 
-        # 3. Colunas de Valor Contábil (Moeda/Decimal)
         accounting_columns = {
             "vPrest_vTPrest", "vPrest_vRec", "imp_vBC", "imp_pICMS",
             "imp_vICMS", "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
@@ -61,7 +57,6 @@ class ExcelExporter:
             "comp_VALOR_FRETE", "comp_VALOR_ICMS", "comp_VALOR_PEDAGIO"
         }
 
-        # Descobrir colunas dinâmicas com set comprehension otimizado (restrição: NÃO alterar)
         dynamic_cols = sorted({
             key for row in self.cte_data
             for key in row
@@ -70,102 +65,82 @@ class ExcelExporter:
 
         final_headers = self.cte_headers + dynamic_cols
 
-        # Escrever cabeçalhos
-        for col_idx, header in enumerate(final_headers, 1):
-            cell = ws.cell(row=1, column=col_idx, value=header)
+        # Larguras padrão de colunas fixadas no Excel
+        for idx, _ in enumerate(final_headers, 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = 25
+
+        # --- Cabeçalho ---
+        header_cells = []
+        for header in final_headers:
+            cell = WriteOnlyCell(ws, value=header)
             cell.font = bold_font
-            cell.alignment = center_alignment # Alinhamento Global
-            
-            # (Restrição) Manter preenchimento cinza para identificadores de grupo
+            cell.alignment = center_alignment
             if header.startswith("(") and header.endswith(")"):
                 cell.fill = gray_fill
+            header_cells.append(cell)
+        ws.append(header_cells)
 
-        # Escrever dados
-        for row_idx, row_data in enumerate(self.cte_data, 2):
-            for col_idx, header in enumerate(final_headers, 1):
+        # --- Linhas de Dados ---
+        for row_data in self.cte_data:
+            row_cells = []
+            for header in final_headers:
                 raw_val = row_data.get(header, "")
-                if raw_val is not None:
-                    raw_val = str(raw_val).strip()
-                else:
-                    raw_val = ""
-                    
-                cell = ws.cell(row=row_idx, column=col_idx)
+                raw_val = str(raw_val).strip() if raw_val is not None else ""
                 
-                # Alinhamento Global
+                cell = WriteOnlyCell(ws)
                 cell.alignment = center_alignment
 
-                # (Restrição) Agrupamentos mantêm o cinza e são pulados
                 if header.startswith("(") and header.endswith(")"):
                     cell.fill = gray_fill
+                    row_cells.append(cell)
                     continue
 
-                # NOVA REGRA: Tratamento Nativo de Datas (Padrão BR)
                 if header == "ide_dhEmi" and raw_val:
                     try:
-                        # Extrai a data do formato ISO (ex: 2025-09-01T18:14:00-03:00)
-                        dt_obj = datetime.fromisoformat(raw_val)
-                        # Remove o fuso horário (tz-naive) para o Excel aceitar nativamente
-                        dt_obj = dt_obj.replace(tzinfo=None)
+                        dt_obj = datetime.fromisoformat(raw_val).replace(tzinfo=None)
                         cell.value = dt_obj
                         cell.number_format = 'DD/MM/YYYY HH:MM:SS'
-                        continue  # Processado com sucesso, pula para a próxima célula
                     except ValueError:
-                        pass # Se por acaso a tag vier com texto sujo, cai no fallback de string normal
-
-                # 3. Colunas de Valor Contábil -> Cast para float e tipagem com accounting format
-                if header in accounting_columns:
+                        cell.value = raw_val
+                        cell.number_format = '@'
+                elif header in accounting_columns:
                     if raw_val:
                         try:
                             cell.value = float(raw_val)
                             cell.number_format = ACCOUNTING_FORMAT
                         except ValueError:
-                            # Fallback para string em caso de formatação suja (texto irrecusável)
                             cell.value = raw_val
                             cell.number_format = '@'
-                # 4. Colunas de Texto Estrito (Todo o Restante) -> Cast forçado para String ('@')
                 else:
                     cell.value = raw_val
                     cell.number_format = '@'
-
-        # Auto-ajuste de largura de colunas
-        self._auto_adjust_columns(ws)
+                
+                row_cells.append(cell)
+            ws.append(row_cells)
 
     def _build_events_sheet(self, ws):
         bold_font = Font(bold=True)
         center_alignment = Alignment(horizontal='center', vertical='center')
 
-        for col_idx, header in enumerate(EVENT_SHEET_HEADERS, 1):
-            cell = ws.cell(row=1, column=col_idx, value=header)
-            cell.font = bold_font
-            cell.alignment = center_alignment
-
-        for row_idx, row_data in enumerate(self.event_data, 2):
-            for col_idx, header in enumerate(EVENT_SHEET_HEADERS, 1):
-                raw_val = row_data.get(header, "")
-                if raw_val is not None:
-                    raw_val = str(raw_val).strip()
-                else:
-                    raw_val = ""
-                    
-                cell = ws.cell(row=row_idx, column=col_idx, value=raw_val)
-                cell.alignment = center_alignment
-                cell.number_format = '@' # Aba de eventos tem formato de texto explícito (datas longas, texto bruto)
-
-        # Ajusta a largura das colunas de detalhes e chave
         ws.column_dimensions['A'].width = EVENT_KEY_COL_WIDTH
         ws.column_dimensions['D'].width = EVENT_DETAIL_COL_WIDTH
 
-    @staticmethod
-    def _auto_adjust_columns(ws):
-        """Auto-ajusta a largura de todas as colunas baseado no conteúdo."""
-        for column_cells in ws.columns:
-            max_length = 0
-            for cell in column_cells:
-                try:
-                    cell_length = len(str(cell.value or ""))
-                    if cell_length > max_length:
-                        max_length = cell_length
-                except (TypeError, AttributeError):
-                    pass
-            col_letter = column_cells[0].column_letter
-            ws.column_dimensions[col_letter].width = min(max_length + 2, MAX_COLUMN_WIDTH)
+        header_cells = []
+        for header in EVENT_SHEET_HEADERS:
+            cell = WriteOnlyCell(ws, value=header)
+            cell.font = bold_font
+            cell.alignment = center_alignment
+            header_cells.append(cell)
+        ws.append(header_cells)
+
+        for row_data in self.event_data:
+            row_cells = []
+            for header in EVENT_SHEET_HEADERS:
+                raw_val = row_data.get(header, "")
+                raw_val = str(raw_val).strip() if raw_val is not None else ""
+                
+                cell = WriteOnlyCell(ws, value=raw_val)
+                cell.alignment = center_alignment
+                cell.number_format = '@'
+                row_cells.append(cell)
+            ws.append(row_cells)

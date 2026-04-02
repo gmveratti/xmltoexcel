@@ -5,6 +5,7 @@ import os
 import shutil
 import concurrent.futures
 import queue
+import threading
 from typing import List, Dict, Any
 
 from core.archive_handler import ArchiveHandler
@@ -25,7 +26,7 @@ class ProcessingPipeline:
     def __init__(self, ui_queue: queue.Queue):
         self.ui_queue = ui_queue
 
-    def run(self, archive_path: str, dst_dir: str):
+    def run(self, archive_path: str, dst_dir: str, cancel_event: threading.Event = None):
         """Executa o pipeline completo. Envia mensagens para a UI via queue."""
         try:
             error_dir = os.path.join(dst_dir, "erros_quarentena")
@@ -34,6 +35,8 @@ class ProcessingPipeline:
             self.ui_queue.put(StatusMessage("Descompactando arquivos (pode levar alguns minutos)..."))
 
             with ArchiveHandler(archive_path) as archive_handler:
+                if cancel_event and cancel_event.is_set(): return
+                
                 archive_handler.extract_all()
                 self.ui_queue.put(StatusMessage("Buscando XMLs na pasta temporária..."))
 
@@ -48,10 +51,14 @@ class ProcessingPipeline:
                 self.ui_queue.put(StatusMessage("Extraindo dados das notas (Multiprocessamento)..."))
 
                 all_cte_data, all_event_data, error_count = self._process_xmls(
-                    xml_files, total_files, error_dir
+                    xml_files, total_files, error_dir, cancel_event
                 )
 
-                self.ui_queue.put(StatusMessage("Gerando arquivo Excel..."))
+                if cancel_event and cancel_event.is_set():
+                    self.ui_queue.put(StatusMessage("Processamento cancelado pelo utilizador."))
+                    return
+
+                self.ui_queue.put(StatusMessage("Gerando arquivo Excel (Modo Alta Performance)..."))
                 base_name = os.path.splitext(os.path.basename(archive_path))[0]
                 output_filename = os.path.join(dst_dir, f"{base_name}.xlsx")
 
@@ -65,8 +72,8 @@ class ProcessingPipeline:
             self.ui_queue.put(FatalErrorMessage(str(e)))
 
     def _process_xmls(self, xml_files: List[str], total_files: int,
-                      error_dir: str) -> tuple:
-        """Processa XMLs em paralelo e gerencia quarentena de erros."""
+                      error_dir: str, cancel_event: threading.Event) -> tuple:
+        """Processa XMLs em paralelo e gerencia quarentena de erros, com proteção de RAM."""
         all_cte_data: List[Dict[str, Any]] = []
         all_event_data: List[Dict[str, str]] = []
         error_count = 0
@@ -75,18 +82,22 @@ class ProcessingPipeline:
         max_workers = max(1, (os.cpu_count() or 1) - 1)
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-            future_to_xml = {executor.submit(process_single_xml, xml): xml for xml in xml_files}
+            # FASE 1: OTIMIZAÇÃO DE MEMÓRIA -> executor.map com chunksize=100
+            # Evita instanciar milhares de Futures simultâneos na memória
+            results = executor.map(process_single_xml, xml_files, chunksize=100)
 
-            for future in concurrent.futures.as_completed(future_to_xml):
-                worker_result: WorkerResult = future.result()
+            for worker_result in results:
+                if cancel_event and cancel_event.is_set():
+                    # Aborta o loop gentilmente se o utilizador fechar a janela
+                    break
 
-                if worker_result.result and worker_result.result.data is not None:
+                if worker_result and worker_result.result and worker_result.result.data is not None:
                     if worker_result.result.data_type == "CTE":
                         all_cte_data.append(worker_result.result.data)
                     elif worker_result.result.data_type == "EVENT":
                         all_event_data.append(worker_result.result.data)
 
-                if worker_result.error:
+                if worker_result and worker_result.error:
                     error_count += 1
                     self._handle_quarantine(worker_result.error, error_dir)
 
@@ -100,14 +111,11 @@ class ProcessingPipeline:
     def _handle_quarantine(error_info, error_dir: str):
         """Copia o XML com erro para quarentena e grava o _LOG.txt."""
         file_name = os.path.basename(error_info.xml_file)
-
-        # Copiar XML para pasta de quarentena
         try:
             shutil.copy2(error_info.xml_file, os.path.join(error_dir, file_name))
         except OSError as e:
             logger.warning("Não foi possível copiar XML para quarentena: %s", e)
 
-        # Gravar _LOG.txt com detalhes do erro (bug fix: README documentava mas não era implementado)
         log_path = os.path.join(error_dir, f"{file_name}_LOG.txt")
         try:
             with open(log_path, "w", encoding="utf-8") as f:
