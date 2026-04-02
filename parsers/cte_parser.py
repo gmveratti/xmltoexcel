@@ -69,15 +69,39 @@ class CTeParser(BaseXMLParser):
                 if c_tag in mapping:
                     base_data[mapping[c_tag]] = self._safe_text(child)
 
-        # 4. Componentes Dinâmicos
+        # 4. Componentes Dinâmicos (Com Normalização e Soma Acumulativa)
         vprest_node = self._search_tag(inf_cte_node, "vPrest")
         if vprest_node is not None:
             comps = [c for c in vprest_node.iter() if c.tag.split('}')[-1].lower() == "comp"]
             for comp in comps:
                 nome = self._safe_text(self._search_tag(comp, "xNome"))
                 valor = self._safe_text(self._search_tag(comp, "vComp"))
+                
                 if nome and valor:
-                    nome_coluna = f"comp_{nome.upper().replace(' ', '_')}"
-                    base_data[nome_coluna] = valor
+                    nome_limpo = nome.upper().replace(' ', '_')
+                    
+                    # Funil de Normalização
+                    if "PEDAGIO" in nome_limpo:
+                        nome_coluna = "comp_PEDAGIO"
+                    elif "FRETE" in nome_limpo:
+                        nome_coluna = "comp_FRETE_VALOR"
+                    elif "IMPOSTO" in nome_limpo or "TRIBUTO" in nome_limpo:
+                        nome_coluna = "comp_IMPOSTOS"
+                    else:
+                        nome_coluna = f"comp_{nome_limpo}"
+
+                    # LÓGICA DE FIDELIDADE (Soma Acumulativa)
+                    # Se já existe um valor nessa coluna (ex: 2 pedágios na mesma nota), ele soma!
+                    if base_data.get(nome_coluna):
+                        try:
+                            valor_existente = float(base_data[nome_coluna])
+                            valor_novo = float(valor)
+                            base_data[nome_coluna] = str(valor_existente + valor_novo)
+                        except ValueError:
+                            # Prevenção de erro caso o texto não seja um número
+                            base_data[nome_coluna] = valor
+                    else:
+                        # Se a coluna está vazia, apenas guarda o valor
+                        base_data[nome_coluna] = valor
 
         return base_data
