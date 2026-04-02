@@ -32,7 +32,7 @@ jobs:
 
     - name: Compilar (.exe) usando PyInstaller
       run: |
-        uv run pyinstaller --noconfirm --onefile --windowed --name "Conversor_XML_Excel" --icon "assets/ico.ico" --add-data "bin;bin" --add-data "assets;assets" main.py
+        uv run pyinstaller --noconfirm --onefile --windowed --name "Conversor_XML_Excel" --icon "assets/ico.ico" --add-data "bin/UnRAR.exe;bin" --add-data "assets/ico.ico;assets" main.py
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4

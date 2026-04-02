@@ -25,6 +25,9 @@ class CTetoExcelApp:
         self.root.geometry(WINDOW_SIZE)
         self.root.resizable(False, False)
 
+        # FASE 4: DEFINIÇÃO DE ÍCONE (PORTÁTIL)
+        self._set_app_icon()
+
         self.queue: queue.Queue = queue.Queue()
         self.is_processing = False
         self.start_time = 0
@@ -203,3 +206,22 @@ class CTetoExcelApp:
                 self.root.after(1500, self.root.destroy)
         else:
             self.root.destroy()
+
+    def _set_app_icon(self):
+        """Define o ícone da janela de forma portável."""
+        import sys
+        if getattr(sys, 'frozen', False):
+            # No binário compilado pelo PyInstaller
+            base_path = sys._MEIPASS
+        else:
+            # Em modo de desenvolvimento (uv run main.py)
+            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            
+        icon_path = os.path.join(base_path, "assets", "ico.ico")
+        
+        if os.path.exists(icon_path):
+            try:
+                # Tenta definir o ícone no Windows (.ico)
+                self.root.iconbitmap(icon_path)
+            except Exception as e:
+                logger.warning("Não foi possível carregar o ícone da janela: %s", e)
