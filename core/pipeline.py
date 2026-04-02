@@ -13,7 +13,7 @@ from core.excel_exporter import ExcelExporter
 from core.constants import EXCEL_HEADERS, PROGRESS_UPDATE_INTERVAL
 from core.models import (
     WorkerResult, StatusMessage, StartMessage, ProgressMessage,
-    NoFilesMessage, DoneMessage, FatalErrorMessage
+    NoFilesMessage, DoneMessage, FatalErrorMessage, DataType
 )
 from core.worker import process_single_xml
 
@@ -92,9 +92,9 @@ class ProcessingPipeline:
                     break
 
                 if worker_result and worker_result.result and worker_result.result.data is not None:
-                    if worker_result.result.data_type == "CTE":
+                    if worker_result.result.data_type == DataType.CTE:
                         all_cte_data.append(worker_result.result.data)
-                    elif worker_result.result.data_type == "EVENT":
+                    elif worker_result.result.data_type == DataType.EVENT:
                         all_event_data.append(worker_result.result.data)
 
                 if worker_result and worker_result.error:

@@ -2,42 +2,33 @@
 
 import logging
 import traceback
-import defusedxml.ElementTree as ET
+import xml.etree.ElementTree as ET
 
-from core.models import ParseResult, ErrorInfo, WorkerResult
+from core.models import ParseResult, ErrorInfo, WorkerResult, DataType
 from parsers.cte_parser import CTeParser
 from parsers.cte_event_parser import CTeEventParser
 
 logger = logging.getLogger(__name__)
 
-
 def process_single_xml(xml_file: str) -> WorkerResult:
-    """
-    Função global para o ProcessPoolExecutor.
-    Abre o XML UMA ÚNICA VEZ no disco e repassa a memória para os parsers (Velocidade Extrema).
-    """
     try:
-        # 1. Leitura segura e única do disco (Protegida contra XML Bomb)
         tree = ET.parse(xml_file)
         root = tree.getroot()
 
-        # 2. Tenta extrair como CT-e normal (Passa a árvore na memória)
         cte_parser = CTeParser(root)
         cte_data = cte_parser.extract_data()
         if cte_data is not None:
-            return WorkerResult(result=ParseResult("CTE", cte_data), error=None)
+            # Substituído a string "CTE" pelo Enum DataType.CTE
+            return WorkerResult(result=ParseResult(DataType.CTE, cte_data), error=None)
 
-        # 3. Se não encontrou tag de CT-e, tenta extrair como Evento (Usa a mesma memória)
         event_parser = CTeEventParser(root)
         event_data = event_parser.extract_data()
         if event_data is not None:
-            return WorkerResult(result=ParseResult("EVENT", event_data), error=None)
+            return WorkerResult(result=ParseResult(DataType.EVENT, event_data), error=None)
 
-        # 4. Ignora o ficheiro se não for nenhum dos dois
-        return WorkerResult(result=ParseResult("IGNORE", None), error=None)
+        return WorkerResult(result=ParseResult(DataType.IGNORE, None), error=None)
 
     except Exception as e:
-        logger.warning("Falha ao processar XML '%s': %s", xml_file, e)
         return WorkerResult(
             result=None,
             error=ErrorInfo(xml_file, str(e), traceback.format_exc())
