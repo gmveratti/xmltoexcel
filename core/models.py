@@ -1,67 +1,55 @@
 # core/models.py
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional
+from enum import Enum, auto
 
+# FASE 3: Enumeração para Tipos de Dados (Segurança de Tipagem)
+class DataType(Enum):
+    CTE = auto()
+    EVENT = auto()
+    IGNORE = auto()
 
-@dataclass(frozen=True)
+@dataclass
 class ParseResult:
-    """Resultado do parsing de um XML."""
-    data_type: str  # "CTE" | "EVENT" | "IGNORE"
+    data_type: DataType
     data: Optional[Dict[str, Any]]
 
-
-@dataclass(frozen=True)
+@dataclass
 class ErrorInfo:
-    """Informação de erro durante o processamento de um XML."""
     xml_file: str
     error_msg: str
     traceback: str
 
-
-@dataclass(frozen=True)
+@dataclass
 class WorkerResult:
-    """Retorno completo do worker (resultado + erro)."""
     result: Optional[ParseResult]
     error: Optional[ErrorInfo]
 
-
-# ==================== Mensagens da Queue (Thread -> UI) ====================
-
-@dataclass(frozen=True)
+# --- Mensagens para a Interface (UI) ---
+@dataclass
 class StatusMessage:
-    """Atualização de status textual."""
     text: str
 
-
-@dataclass(frozen=True)
+@dataclass
 class StartMessage:
-    """Sinaliza o início do processamento com total de arquivos."""
     total_files: int
 
-
-@dataclass(frozen=True)
+@dataclass
 class ProgressMessage:
-    """Atualização de progresso numérico."""
     current: int
     total: int
 
-
-@dataclass(frozen=True)
+@dataclass
 class NoFilesMessage:
-    """Sinaliza que nenhum XML foi encontrado."""
     pass
 
-
-@dataclass(frozen=True)
+@dataclass
 class DoneMessage:
-    """Sinaliza conclusão do processamento."""
     total_read: int
     total_success: int
     total_errors: int
 
-
-@dataclass(frozen=True)
+@dataclass
 class FatalErrorMessage:
-    """Sinaliza erro fatal que interrompe o processamento."""
     error_msg: str
