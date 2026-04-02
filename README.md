@@ -11,8 +11,10 @@ Você pode utilizar a aplicação através do binário executável nativo para W
 **Passo-a-passo para baixar (Binário `.exe`):**
 1. Vá até a seção **[Releases](../../releases)** na página principal deste projeto no GitHub.
 2. Expanda os *Assets* da versão mais recente na listagem.
-3. Faça o Download apenas do arquivo **`.exe`** (ex: `Conversor_XML_Excel.exe`).
-4. Dê um duplo-clique. O aplicativo rodará independentemente sem instalação, contendo seu ecossistema, motor para WinRAR isolados e interfaces em seu próprio corpo!
+3. Faça o Download apenas do arquivo **`.zip`** (ex: `XMLtoEXCEL.zip`).
+4. Dentro do arquivo compactado você encontrará o arquivo **`XMLtoEXCEL.exe`**.
+5. Descompacte o arquivo.
+6. Dê um duplo-clique. O aplicativo rodará independentemente sem instalação, contendo seu ecossistema, motor para WinRAR isolados e interfaces em seu próprio corpo!
 
 ---
 
