@@ -52,9 +52,7 @@ class ExcelExporter:
             "vPrest_vTPrest", "vPrest_vRec", "imp_vBC", "imp_pICMS",
             "imp_vICMS", "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
             "imp_ICMSOutraUF_vBCOutraUF", "imp_ICMSOutraUF_pICMSOutraUF",
-            "imp_ICMSOutraUF_vICMSOutraUF", "imp_vTotTrib", 
-            "comp_FRETE_VALOR", "comp_IMPOSTOS", "comp_PEDAGIO",
-            "comp_VALOR_FRETE", "comp_VALOR_ICMS", "comp_VALOR_PEDAGIO"
+            "imp_ICMSOutraUF_vICMSOutraUF", "imp_vTotTrib",
         }
 
         dynamic_cols = sorted({
@@ -103,7 +101,7 @@ class ExcelExporter:
                     except ValueError:
                         cell.value = raw_val
                         cell.number_format = '@'
-                elif header in accounting_columns:
+                elif header in accounting_columns or header.startswith("comp_"):
                     if raw_val:
                         try:
                             cell.value = float(raw_val)

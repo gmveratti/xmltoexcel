@@ -77,7 +77,12 @@ class ProcessingPipeline:
         all_cte_data: List[Dict[str, Any]] = []
         all_event_data: List[Dict[str, str]] = []
         error_count = 0
+        duplicate_count = 0
         processed_count = 0
+
+        # Deduplicação por Chave de Acesso — impede linhas duplicadas
+        seen_cte_keys: set = set()
+        seen_event_keys: set = set()
 
         max_workers = max(1, (os.cpu_count() or 1) - 1)
 
@@ -92,10 +97,31 @@ class ProcessingPipeline:
                     break
 
                 if worker_result and worker_result.result and worker_result.result.data is not None:
+                    data = worker_result.result.data
+
                     if worker_result.result.data_type == DataType.CTE:
-                        all_cte_data.append(worker_result.result.data)
+                        cte_key = data.get("chv_cte_Id", "")
+                        if cte_key and cte_key in seen_cte_keys:
+                            duplicate_count += 1
+                            logger.debug("CT-e duplicado ignorado: %s", cte_key)
+                        else:
+                            if cte_key:
+                                seen_cte_keys.add(cte_key)
+                            all_cte_data.append(data)
+
                     elif worker_result.result.data_type == DataType.EVENT:
-                        all_event_data.append(worker_result.result.data)
+                        event_key = (
+                            data.get("Chave de Acesso (Referência)", ""),
+                            data.get("Tipo de Evento", ""),
+                            data.get("Data do Evento", ""),
+                            data.get("Detalhes / Justificativa", "")
+                        )
+                        if event_key in seen_event_keys:
+                            duplicate_count += 1
+                            logger.debug("Evento duplicado ignorado: %s", event_key[0])
+                        else:
+                            seen_event_keys.add(event_key)
+                            all_event_data.append(data)
 
                 if worker_result and worker_result.error:
                     error_count += 1
@@ -104,6 +130,9 @@ class ProcessingPipeline:
                 processed_count += 1
                 if processed_count % PROGRESS_UPDATE_INTERVAL == 0 or processed_count == total_files:
                     self.ui_queue.put(ProgressMessage(processed_count, total_files))
+
+        if duplicate_count > 0:
+            logger.info("Deduplicação: %d nota(s) duplicada(s) removida(s)", duplicate_count)
 
         return all_cte_data, all_event_data, error_count
 
