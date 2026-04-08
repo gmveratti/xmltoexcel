@@ -54,6 +54,7 @@ COMPONENTS_MAP: Dict[str, str] = {
     # ===== GRIS (Gerenciamento de Risco) =====
     "GRIS":             "comp_GRIS",
     "GERENCIAMENTO DE RISCO":  "comp_GRIS",
+    "GERENCIAMENTO RISCO":     "comp_GRIS",
     "GERENCIAMENTO_RISCO":     "comp_GRIS",
     "G.R.I.S":          "comp_GRIS",
     "G.R.I.S.":         "comp_GRIS",
