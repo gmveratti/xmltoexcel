@@ -22,7 +22,7 @@ class CTetoExcelApp:
     def __init__(self, root):
         self.root = root
         self.root.title(WINDOW_TITLE)
-        self.root.geometry(WINDOW_SIZE)
+        self.root.geometry("600x430")
         self.root.resizable(False, False)
 
         # FASE 4: DEFINIÇÃO DE ÍCONE (PORTÁTIL)
@@ -31,7 +31,8 @@ class CTetoExcelApp:
         self.queue: queue.Queue = queue.Queue()
         self.is_processing = False
         self.start_time = 0
-        
+        self.doc_type_var = tk.StringVar(value="CTE")
+
         # FASE 1: Evento de cancelamento seguro
         self.cancel_event = threading.Event()
         
@@ -65,10 +66,25 @@ class CTetoExcelApp:
 
         ttk.Label(main_frame, text="Pasta de Destino (Onde salvar o Excel):").pack(anchor=tk.W)
         dst_frame = ttk.Frame(main_frame)
-        dst_frame.pack(fill=tk.X, pady=(0, 20))
+        dst_frame.pack(fill=tk.X, pady=(0, 10))
         self.dst_entry = ttk.Entry(dst_frame)
         self.dst_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         ttk.Button(dst_frame, text="Procurar...", command=self.browse_dst).pack(side=tk.RIGHT)
+
+        # --- SELETOR DE TIPO DE DOCUMENTO ---
+        ttk.Label(main_frame, text="Tipo de Documento:").pack(anchor=tk.W, pady=(0, 2))
+        type_frame = ttk.Frame(main_frame)
+        type_frame.pack(fill=tk.X, pady=(0, 12))
+        self.rb_cte = ttk.Radiobutton(
+            type_frame, text="CT-e  (Conhecimento de Transporte)",
+            variable=self.doc_type_var, value="CTE"
+        )
+        self.rb_cte.pack(side=tk.LEFT, padx=(0, 20))
+        self.rb_nfe = ttk.Radiobutton(
+            type_frame, text="NF-e / DANFE  (Nota Fiscal de Produtos)",
+            variable=self.doc_type_var, value="NFE"
+        )
+        self.rb_nfe.pack(side=tk.LEFT)
 
         ttk.Label(main_frame, text="Progresso da Conversão", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 5))
 
@@ -138,17 +154,24 @@ class CTetoExcelApp:
         self.is_processing = True
         self.start_time = time.time()
         self.cancel_event.clear()
-        
+
+        doc_type = self.doc_type_var.get()
+
         self.btn_start.config(state=tk.DISABLED)
         self.src_entry.config(state=tk.DISABLED)
         self.dst_entry.config(state=tk.DISABLED)
+        self.rb_cte.config(state=tk.DISABLED)
+        self.rb_nfe.config(state=tk.DISABLED)
 
         self.progress_bar.config(mode='indeterminate')
         self.progress_bar.start(10)
 
         pipeline = ProcessingPipeline(self.queue)
-        # Passar o cancel_event para o pipeline
-        threading.Thread(target=pipeline.run, args=(rar_path, dst_dir, self.cancel_event), daemon=True).start()
+        threading.Thread(
+            target=pipeline.run,
+            args=(rar_path, dst_dir, self.cancel_event, doc_type),
+            daemon=True
+        ).start()
 
     def check_queue(self):
         if self.is_processing and self.start_time > 0:
@@ -204,6 +227,8 @@ class CTetoExcelApp:
         self.btn_start.config(state=tk.NORMAL)
         self.src_entry.config(state=tk.NORMAL)
         self.dst_entry.config(state=tk.NORMAL)
+        self.rb_cte.config(state=tk.NORMAL)
+        self.rb_nfe.config(state=tk.NORMAL)
         self.progress_var.set(0)
         self.lbl_status.config(text="Aguardando início...", foreground="gray")
         self.lbl_count.config(text="Notas: 0 / 0 (0%)")
