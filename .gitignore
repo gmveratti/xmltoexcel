@@ -2,6 +2,7 @@
 data/
 files/
 *.xlsx
+code_review_report.md
 *.log
 
 # Arquivos compactados e XML
