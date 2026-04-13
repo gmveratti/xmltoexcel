@@ -3,163 +3,101 @@
 import re
 import logging
 from typing import Dict, List, Optional, Any
-
 import xml.etree.ElementTree as ET
 
 from core.constants import NFE_HEADERS
 from parsers.base_parser import BaseXMLParser
 
 logger = logging.getLogger(__name__)
-
-# Regex para extrair o Pedido Amazon do campo infCpl (texto livre)
 _PEDIDO_AMAZON_RE = re.compile(r"Numero do pedido da compra:\s*([\d-]+)", re.IGNORECASE)
 
-
 class NFeParser(BaseXMLParser):
-    """Parser especializado em ler XMLs de NF-e v4.00.
-
-    Implementa o padrão de Flattening: o cabeçalho (emitente, destinatário,
-    totais) é replicado para cada item (<det>) da nota, gerando 1 linha
-    no Excel por produto.
-    """
+    """Parser NF-e v4.00 (Mapeamento Estrutural + Catch-All Dinâmico)"""
 
     def __init__(self, root: ET.Element):
         super().__init__(root)
         self._ns = "http://www.portalfiscal.inf.br/nfe"
 
     def extract_data(self) -> Optional[List[Dict[str, Any]]]:
-        """Extrai dados da NF-e. Retorna uma lista de dicts (1 por item/produto).
-
-        Returns:
-            None se o XML não contiver <infNFe>.
-            Lista de dicionários com dados achatados (header + produto).
-        """
         inf_nfe_node = self.root.find(f".//{{{self._ns}}}infNFe")
-        if inf_nfe_node is None:
-            return None
+        if inf_nfe_node is None: return None
 
-        header = self._extract_header(inf_nfe_node)
-        return self._extract_items(inf_nfe_node, header)
+        # 1. Dicionário Base do Cabeçalho
+        header_data = {h: "" for h in NFE_HEADERS}
+        id_nfe = inf_nfe_node.get("Id", "")
+        header_data["chv_nfe_Id"] = id_nfe.replace("NFe", "")
+        header_data["NFe"] = id_nfe
 
-    def _extract_header(self, inf_nfe_node: ET.Element) -> Dict[str, str]:
-        """Extrai os dados comuns da nota (identificação, emitente, destinatário, totais)."""
-        header: Dict[str, str] = {h: "" for h in NFE_HEADERS}
-        header["chv_nfe_Id"] = inf_nfe_node.get("Id", "").replace("NFe", "")
+        item_prefixes = ("det", "prod", "imposto", "ICMS", "IPI", "PIS", "COFINS")
 
-        self._extract_ide(inf_nfe_node, header)
-        self._extract_emit(inf_nfe_node, header)
-        self._extract_dest(inf_nfe_node, header)
-        self._extract_totals(inf_nfe_node, header)
-        self._extract_inf_adic(inf_nfe_node, header)
+        # --- A: Extração Estrutural (Automática) do Cabeçalho ---
+        for header in NFE_HEADERS:
+            if header in ("NFe", "chv_nfe_Id", "ext_Pedido_Amazon", "Extra_Tags_Dinamicas") or header.startswith(item_prefixes):
+                continue
+            
+            path_parts = header.split("_")
+            curr_node = inf_nfe_node
+            for part in path_parts:
+                curr_node = self._search_tag(curr_node, part)
+                if curr_node is None: break
+            
+            if curr_node is not None:
+                header_data[header] = self._safe_text(curr_node)
 
-        return header
-
-    def _extract_ide(self, inf_nfe_node: ET.Element, header: Dict[str, str]) -> None:
-        """Extrai dados de identificação da NF-e (<ide>)."""
-        ide = self._search_tag(inf_nfe_node, "ide")
-        if ide is None:
-            return
-
-        header["ide_natOp"] = self._safe_text(self._search_tag(ide, "natOp"))
-        header["ide_nNF"] = self._safe_text(self._search_tag(ide, "nNF"))
-        header["ide_dhEmi"] = self._safe_text(self._search_tag(ide, "dhEmi"))
-        header["ide_tpNF"] = self._safe_text(self._search_tag(ide, "tpNF"))
-
-        # NFe referenciada pode estar dentro de <NFref>
-        ref_nfe = self._search_tag(inf_nfe_node, "refNFe")
-        header["ide_NFref"] = self._safe_text(ref_nfe)
-
-    def _extract_emit(self, inf_nfe_node: ET.Element, header: Dict[str, str]) -> None:
-        """Extrai dados do emitente (<emit>)."""
-        emit = self._search_tag(inf_nfe_node, "emit")
-        if emit is None:
-            return
-
-        header["emit_CNPJ"] = self._safe_text(self._search_tag(emit, "CNPJ"))
-        header["emit_xNome"] = self._safe_text(self._search_tag(emit, "xNome"))
-
-    def _extract_dest(self, inf_nfe_node: ET.Element, header: Dict[str, str]) -> None:
-        """Extrai dados do destinatário (<dest>), aceitando tanto CNPJ quanto CPF."""
-        dest = self._search_tag(inf_nfe_node, "dest")
-        if dest is None:
-            return
-
-        cnpj = self._search_tag(dest, "CNPJ")
-        cpf = self._search_tag(dest, "CPF")
-        header["dest_Doc"] = self._safe_text(cnpj) if cnpj is not None else self._safe_text(cpf)
-        header["dest_xNome"] = self._safe_text(self._search_tag(dest, "xNome"))
-
-        ender_dest = self._search_tag(dest, "enderDest")
-        if ender_dest is not None:
-            header["dest_UF"] = self._safe_text(self._search_tag(ender_dest, "UF"))
-            header["dest_xMun"] = self._safe_text(self._search_tag(ender_dest, "xMun"))
-
-    def _extract_totals(self, inf_nfe_node: ET.Element, header: Dict[str, str]) -> None:
-        """Extrai os totais do ICMSTot."""
-        total = self._search_tag(inf_nfe_node, "ICMSTot")
-        if total is None:
-            return
-
-        header["tot_vBC"] = self._safe_text(self._search_tag(total, "vBC"))
-        header["tot_vICMS"] = self._safe_text(self._search_tag(total, "vICMS"))
-        header["tot_vProd"] = self._safe_text(self._search_tag(total, "vProd"))
-        header["tot_vFrete"] = self._safe_text(self._search_tag(total, "vFrete"))
-        header["tot_vNF"] = self._safe_text(self._search_tag(total, "vNF"))
-
-    def _extract_inf_adic(self, inf_nfe_node: ET.Element, header: Dict[str, str]) -> None:
-        """Extrai informações adicionais e tenta capturar o Pedido Amazon via regex."""
-        inf_adic = self._search_tag(inf_nfe_node, "infAdic")
-        if inf_adic is None:
-            return
-
-        inf_cpl = self._safe_text(self._search_tag(inf_adic, "infCpl"))
-        header["infAdic_infCpl"] = inf_cpl
-
+        # Regex do Pedido Amazon
+        inf_cpl = header_data.get("infAdic_infCpl", "")
         match = _PEDIDO_AMAZON_RE.search(inf_cpl)
-        header["ext_Pedido_Amazon"] = match.group(1) if match else ""
+        if match: header_data["ext_Pedido_Amazon"] = match.group(1)
 
-    def _extract_items(self, inf_nfe_node: ET.Element,
-                       header: Dict[str, str]) -> List[Dict[str, Any]]:
-        """Achata os itens: replica o header para cada <det> encontrado."""
-        items_data: List[Dict[str, Any]] = []
+        # --- B: A Rede de Segurança Dinâmica (Extra_Tags_Dinamicas) ---
+        # Cria lista de tags conhecidas para ignorar e pegar só as novidades
+        known_tags = {h.split("_")[-1] for h in NFE_HEADERS}
+        known_tags.update({"infNFe", "emit", "dest", "enderEmit", "enderDest", "det", "prod", "imposto", "ICMS", "IPI", "PIS", "COFINS", "total", "ICMSTot", "transp", "cobr", "fat", "dup", "pag", "detPag", "infAdic", "obsCont", "obsFisco", "Signature"})
+        
+        extras = []
+        for child in inf_nfe_node.iter():
+            tag = child.tag.split('}')[-1]
+            if tag not in known_tags and child.text and child.text.strip():
+                extras.append(f"{tag}: {child.text.strip()}")
+        header_data["Extra_Tags_Dinamicas"] = " | ".join(extras)
+
+        # --- C: Extração e Achatamento dos Itens (Flattening) ---
+        items_data = []
         det_nodes = inf_nfe_node.findall(f".//{{{self._ns}}}det")
 
         if not det_nodes:
-            # NF-e sem itens — retorna o cabeçalho puro
-            items_data.append(header)
+            items_data.append(header_data)
             return items_data
 
         for det in det_nodes:
-            row = header.copy()
-            row["nItem"] = det.get("nItem", "")
+            row = header_data.copy()
+            row["det_nItem"] = det.get("nItem", "")
 
-            self._extract_product(det, row)
-            self._extract_item_icms(det, row)
+            for header in NFE_HEADERS:
+                if not header.startswith(item_prefixes) or header == "det_nItem":
+                    continue
+
+                # Lógica para Impostos (que possuem sub-tags varáveis como ICMS00, ICMS40)
+                if header.startswith(("ICMS_", "IPI_", "PIS_", "COFINS_")):
+                    tag_imposto, tag_filho = header.split("_")[0], header.split("_")[1]
+                    group_node = det.find(f".//{{{self._ns}}}{tag_imposto}")
+                    if group_node is not None and len(group_node) > 0:
+                        target_node = self._search_tag(group_node[0], tag_filho)
+                        if target_node is not None:
+                            row[header] = self._safe_text(target_node)
+                    continue
+
+                # Extração Estrutural Normal para produtos
+                path_parts = header.split("_")
+                curr_node = det
+                for part in path_parts:
+                    if part == "det": continue
+                    curr_node = self._search_tag(curr_node, part)
+                    if curr_node is None: break
+                
+                if curr_node is not None:
+                    row[header] = self._safe_text(curr_node)
 
             items_data.append(row)
 
         return items_data
-
-    def _extract_product(self, det: ET.Element, row: Dict[str, Any]) -> None:
-        """Extrai dados do produto (<prod>) de um item."""
-        prod = self._search_tag(det, "prod")
-        if prod is None:
-            return
-
-        row["prod_cProd"] = self._safe_text(self._search_tag(prod, "cProd"))
-        row["prod_cEAN"] = self._safe_text(self._search_tag(prod, "cEAN"))
-        row["prod_xProd"] = self._safe_text(self._search_tag(prod, "xProd"))
-        row["prod_NCM"] = self._safe_text(self._search_tag(prod, "NCM"))
-        row["prod_CFOP"] = self._safe_text(self._search_tag(prod, "CFOP"))
-        row["prod_qCom"] = self._safe_text(self._search_tag(prod, "qCom"))
-        row["prod_vUnCom"] = self._safe_text(self._search_tag(prod, "vUnCom"))
-        row["prod_vProd"] = self._safe_text(self._search_tag(prod, "vProd"))
-
-    def _extract_item_icms(self, det: ET.Element, row: Dict[str, Any]) -> None:
-        """Extrai vICMS do imposto a nível do item."""
-        imposto = self._search_tag(det, "imposto")
-        if imposto is None:
-            return
-
-        v_icms = imposto.find(f".//{{{self._ns}}}vICMS")
-        row["prod_vICMS"] = self._safe_text(v_icms) if v_icms is not None else ""

@@ -150,7 +150,7 @@ class ProcessingPipeline:
             False → registro é duplicata, deve ser descartado.
         """
         if data_type == DataType.NFE:
-            key = f'{data.get("chv_nfe_Id", "")}_{data.get("nItem", "")}'
+            key = f'{data.get("chv_nfe_Id", "")}_{data.get("det_nItem", "")}'
         else:
             key = data.get("chv_cte_Id", "")
 

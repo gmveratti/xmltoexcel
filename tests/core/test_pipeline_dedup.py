@@ -94,7 +94,7 @@ class TestNfeDeduplication:
     def test_first_nfe_item_is_accepted(self):
         """Primeiro item NF-e → aceito e chave composta registrada."""
         seen_keys: set = set()
-        data = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "nItem": "1"}
+        data = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "det_nItem": "1"}
 
         result = ProcessingPipeline.check_and_register_main(data, seen_keys, DataType.NFE)
 
@@ -104,8 +104,8 @@ class TestNfeDeduplication:
     def test_same_nfe_different_items_are_both_accepted(self):
         """Mesma NF-e com itens diferentes → ambos aceitos (chave composta difere)."""
         seen_keys: set = set()
-        item1 = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "nItem": "1"}
-        item2 = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "nItem": "2"}
+        item1 = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "det_nItem": "1"}
+        item2 = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "det_nItem": "2"}
 
         r1 = ProcessingPipeline.check_and_register_main(item1, seen_keys, DataType.NFE)
         r2 = ProcessingPipeline.check_and_register_main(item2, seen_keys, DataType.NFE)
@@ -117,7 +117,7 @@ class TestNfeDeduplication:
     def test_duplicate_nfe_item_is_rejected(self):
         """Mesmo item da mesma NF-e → duplicata rejeitada."""
         seen_keys: set = set()
-        data = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "nItem": "1"}
+        data = {"chv_nfe_Id": "35250312345678000195550010000001231000001230", "det_nItem": "1"}
 
         ProcessingPipeline.check_and_register_main(data, seen_keys, DataType.NFE)
         result = ProcessingPipeline.check_and_register_main(data, seen_keys, DataType.NFE)
@@ -128,8 +128,8 @@ class TestNfeDeduplication:
     def test_different_nfes_same_item_number_are_both_accepted(self):
         """NF-es diferentes com mesmo nItem → ambas aceitas (chave difere)."""
         seen_keys: set = set()
-        nfe_a = {"chv_nfe_Id": "11111111111111111111111111111111111111111111", "nItem": "1"}
-        nfe_b = {"chv_nfe_Id": "22222222222222222222222222222222222222222222", "nItem": "1"}
+        nfe_a = {"chv_nfe_Id": "11111111111111111111111111111111111111111111", "det_nItem": "1"}
+        nfe_b = {"chv_nfe_Id": "22222222222222222222222222222222222222222222", "det_nItem": "1"}
 
         r1 = ProcessingPipeline.check_and_register_main(nfe_a, seen_keys, DataType.NFE)
         r2 = ProcessingPipeline.check_and_register_main(nfe_b, seen_keys, DataType.NFE)

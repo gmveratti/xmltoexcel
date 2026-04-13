@@ -2,7 +2,7 @@
 
 """Testes unitários para o parser de NF-e (Nota Fiscal Eletrônica).
 
-Valida o flattening (1 linha por produto), extração de header,
+Valida o flattening (1 linha por produto), extração Híbrida (Schema + Dinâmico),
 dados de emitente/destinatário, totais, e regex do Pedido Amazon.
 """
 
@@ -24,14 +24,14 @@ class TestNFeParserValidXML:
         assert len(result) == 2
 
     def test_access_key_extracted(self, nfe_root):
-        """Chave de acesso (Id) é extraída e o prefixo 'NFe' removido."""
+        """Chave de acesso (Id) é extraída e prefixo 'NFe' removido."""
         result = NFeParser(nfe_root).extract_data()
         expected_key = "35250312345678000195550010000001231000001230"
         assert result[0]["chv_nfe_Id"] == expected_key
         assert result[1]["chv_nfe_Id"] == expected_key
 
     def test_ide_fields_extracted(self, nfe_root):
-        """Campos de identificação (natOp, nNF, dhEmi, tpNF) preenchidos."""
+        """Campos de identificação (natOp, nNF, dhEmi, tpNF) extraídos via schema pathing."""
         result = NFeParser(nfe_root).extract_data()
         row = result[0]
         assert row["ide_natOp"] == "VENDA DE MERCADORIAS"
@@ -40,34 +40,34 @@ class TestNFeParserValidXML:
         assert row["ide_tpNF"] == "1"
 
     def test_emit_fields_extracted(self, nfe_root):
-        """Dados do emitente (CNPJ, xNome) preenchidos."""
+        """Dados do emitente extraídos via automação."""
         result = NFeParser(nfe_root).extract_data()
         assert result[0]["emit_CNPJ"] == "12345678000195"
         assert result[0]["emit_xNome"] == "EMPRESA EMITENTE LTDA"
 
     def test_dest_fields_with_cnpj(self, nfe_root):
-        """Destinatário com CNPJ → dest_Doc preenchido."""
+        """Destinatário com CNPJ."""
         result = NFeParser(nfe_root).extract_data()
-        assert result[0]["dest_Doc"] == "98765432000100"
+        assert result[0]["dest_CNPJ"] == "98765432000100"
         assert result[0]["dest_xNome"] == "CLIENTE DESTINATARIO SA"
-        assert result[0]["dest_UF"] == "SP"
-        assert result[0]["dest_xMun"] == "SAO PAULO"
+        assert result[0]["dest_enderDest_UF"] == "SP"
+        assert result[0]["dest_enderDest_xMun"] == "SAO PAULO"
 
     def test_totals_extracted(self, nfe_root):
-        """Totais do ICMSTot preenchidos corretamente."""
+        """Totais do ICMSTot extraídos pelo modelo exaustivo."""
         result = NFeParser(nfe_root).extract_data()
         row = result[0]
-        assert row["tot_vBC"] == "2500.00"
-        assert row["tot_vICMS"] == "450.00"
-        assert row["tot_vProd"] == "2500.00"
-        assert row["tot_vFrete"] == "50.00"
-        assert row["tot_vNF"] == "2550.00"
+        assert row["total_ICMSTot_vBC"] == "2500.00"
+        assert row["total_ICMSTot_vICMS"] == "450.00"
+        assert row["total_ICMSTot_vProd"] == "2500.00"
+        assert row["total_ICMSTot_vFrete"] == "50.00"
+        assert row["total_ICMSTot_vNF"] == "2550.00"
 
     def test_item1_product_data(self, nfe_root):
         """Produto do item 1 extraído corretamente."""
         result = NFeParser(nfe_root).extract_data()
         row = result[0]
-        assert row["nItem"] == "1"
+        assert row["det_nItem"] == "1"
         assert row["prod_cProd"] == "PROD001"
         assert row["prod_xProd"] == "TECLADO MECANICO RGB"
         assert row["prod_CFOP"] == "5102"
@@ -78,23 +78,28 @@ class TestNFeParserValidXML:
         """Produto do item 2 extraído corretamente."""
         result = NFeParser(nfe_root).extract_data()
         row = result[1]
-        assert row["nItem"] == "2"
+        assert row["det_nItem"] == "2"
         assert row["prod_cProd"] == "PROD002"
         assert row["prod_xProd"] == "MOUSE GAMER WIRELESS"
         assert row["prod_vProd"] == "1000.00"
 
     def test_item_icms_extracted(self, nfe_root):
-        """ICMS a nível do item extraído para cada produto."""
+        """ICMS dinâmico a nível do item (pesquisa dentro do grupo de imposto)."""
         result = NFeParser(nfe_root).extract_data()
-        assert result[0]["prod_vICMS"] == "270.00"
-        assert result[1]["prod_vICMS"] == "180.00"
+        assert result[0]["ICMS_vICMS"] == "270.00"
+        assert result[1]["ICMS_vICMS"] == "180.00"
 
     def test_header_is_replicated_across_items(self, nfe_root):
-        """O header (emitente, totais) é idêntico em ambas as linhas."""
+        """O header (emitente, totais) é replicado para as duas linhas geradas."""
         result = NFeParser(nfe_root).extract_data()
         assert result[0]["emit_CNPJ"] == result[1]["emit_CNPJ"]
-        assert result[0]["tot_vNF"] == result[1]["tot_vNF"]
+        assert result[0]["total_ICMSTot_vNF"] == result[1]["total_ICMSTot_vNF"]
         assert result[0]["dest_xNome"] == result[1]["dest_xNome"]
+
+    def test_dynamic_tags_fallback_is_empty_when_no_unknowns(self, nfe_root):
+        """A coluna de tags dinâmicas Extra_Tags_Dinamicas fica vazia quando tudo já é parseado."""
+        result = NFeParser(nfe_root).extract_data()
+        assert result[0]["Extra_Tags_Dinamicas"] == ""
 
 
 class TestNFeParserAmazonOrder:
@@ -111,22 +116,22 @@ class TestNFeParserAmazonOrder:
         assert "Numero do pedido da compra" in result[0]["infAdic_infCpl"]
 
     def test_dest_with_cpf(self, nfe_amazon_root):
-        """Destinatário com CPF (pessoa física) → dest_Doc = CPF."""
+        """Destinatário com CPF."""
         result = NFeParser(nfe_amazon_root).extract_data()
-        assert result[0]["dest_Doc"] == "12345678901"
-        assert result[0]["dest_UF"] == "RJ"
+        assert result[0]["dest_CPF"] == "12345678901"
+        assert result[0]["dest_enderDest_UF"] == "RJ"
 
 
 class TestNFeParserEdgeCases:
     """Testa cenários de borda (NF-e sem itens, NF-e inválida)."""
 
     def test_no_det_returns_header_only(self, nfe_no_det_root):
-        """NF-e sem <det> → retorna lista com 1 elemento (header puro)."""
+        """NF-e sem <det> → retorna lista com 1 elemento e apenas cabeçalho."""
         result = NFeParser(nfe_no_det_root).extract_data()
         assert result is not None
         assert len(result) == 1
         assert result[0]["ide_natOp"] == "REMESSA"
-        assert result[0]["nItem"] == ""
+        assert result[0].get("det_nItem", "") == ""
 
     def test_invalid_nfe_returns_none(self, nfe_invalid_root):
         """NF-e sem <infNFe> → retorna None."""
