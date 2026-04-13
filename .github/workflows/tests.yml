@@ -1,0 +1,36 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "main", "feature/*", "fix/*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Install Dependencies (with dev extras)
+      run: uv sync --extra dev
+
+    - name: Run Tests with Coverage
+      run: uv run pytest -v --tb=short
+
+    - name: Fail if coverage below threshold
+      run: uv run pytest -o "addopts=" --cov-fail-under=80 --cov=parsers --cov=core.models --cov=core.constants -q

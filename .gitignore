@@ -37,3 +37,8 @@ Thumbs.db
 
 # Arquivos do code review
 *.txt
+
+# Testes / Cobertura
+.coverage
+htmlcov/
+.pytest_cache/

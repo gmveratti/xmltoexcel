@@ -9,5 +9,18 @@ dependencies = [
     "rarfile>=4.2",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.1",
+]
+
 [project.scripts]
 xmltoexcel = "main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=parsers --cov=core --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = ["ui/*", "main.py", "tests/*"]
