@@ -3,7 +3,7 @@
 import logging
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Union, Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,6 @@ class BaseXMLParser(ABC):
         return None
 
     @abstractmethod
-    def extract_data(self) -> Optional[Dict[str, Any]]:
+    def extract_data(self) -> Optional[Union[Dict[str, Any], List[Dict[str, Any]]]]:
         """Extrai dados do XML. Retorna None se o XML não for do tipo esperado."""
         ...

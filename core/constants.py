@@ -82,7 +82,7 @@ EVENT_SHEET_HEADERS: List[str] = [
 # ==================== UI ====================
 
 WINDOW_TITLE: str = "Conversor de XML para Excel"
-WINDOW_SIZE: str = "600x380"
+WINDOW_SIZE: str = "600x420"
 QUEUE_POLL_INTERVAL_MS: int = 100
 PROGRESS_UPDATE_INTERVAL: int = 50
 
@@ -93,3 +93,20 @@ ACCOUNTING_FORMAT: str = '#,##0.00'
 MAX_COLUMN_WIDTH: int = 50
 EVENT_DETAIL_COL_WIDTH: int = 80
 EVENT_KEY_COL_WIDTH: int = 50
+
+# ==================== NF-e Headers ====================
+
+NFE_HEADERS: List[str] = [
+    "(Identificação)", "chv_nfe_Id", "ide_natOp", "ide_nNF", "ide_dhEmi", "ide_tpNF", "ide_NFref",
+    "(Emitente)", "emit_CNPJ", "emit_xNome",
+    "(Destinatário)", "dest_Doc", "dest_xNome", "dest_UF", "dest_xMun",
+    "(Logística/Extra)", "ext_Pedido_Amazon", "infAdic_infCpl",
+    "(Item da Nota)", "nItem", "prod_cProd", "prod_cEAN", "prod_xProd",
+    "prod_NCM", "prod_CFOP", "prod_qCom", "prod_vUnCom", "prod_vProd", "prod_vICMS",
+    "(Totais NF)", "tot_vBC", "tot_vICMS", "tot_vProd", "tot_vFrete", "tot_vNF"
+]
+
+NFE_ACCOUNTING_COLUMNS: Set[str] = {
+    "tot_vBC", "tot_vICMS", "tot_vProd", "tot_vFrete", "tot_vNF",
+    "prod_qCom", "prod_vUnCom", "prod_vProd", "prod_vICMS",
+}

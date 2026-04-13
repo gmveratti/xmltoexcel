@@ -11,7 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 from core.constants import WINDOW_TITLE, WINDOW_SIZE, QUEUE_POLL_INTERVAL_MS
 from core.models import (
     StatusMessage, StartMessage, ProgressMessage,
-    NoFilesMessage, DoneMessage, FatalErrorMessage
+    NoFilesMessage, DoneMessage, FatalErrorMessage, DocType
 )
 from core.pipeline import ProcessingPipeline
 
@@ -51,6 +51,23 @@ class CTetoExcelApp:
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(main_frame, text="Configuração de Extração", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 10))
+
+        # --- SELEÇÃO DO TIPO DE DOCUMENTO ---
+        self.doc_type_var = tk.StringVar(value="CTE")
+
+        type_frame = ttk.Frame(main_frame)
+        type_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(type_frame, text="Tipo de Documento:").pack(side=tk.LEFT, padx=(0, 10))
+        self.rb_cte = ttk.Radiobutton(
+            type_frame, text="CT-e (Conhecimento de Transporte)",
+            variable=self.doc_type_var, value="CTE"
+        )
+        self.rb_cte.pack(side=tk.LEFT, padx=(0, 10))
+        self.rb_nfe = ttk.Radiobutton(
+            type_frame, text="NF-e (Nota Fiscal / DANFE)",
+            variable=self.doc_type_var, value="NFE"
+        )
+        self.rb_nfe.pack(side=tk.LEFT)
 
         # --- BLOCO DE ORIGEM ATUALIZADO (INPUT HÍBRIDO) ---
         ttk.Label(main_frame, text="Origem dos XMLs (Arquivo ou Pasta):").pack(anchor=tk.W)
@@ -142,13 +159,21 @@ class CTetoExcelApp:
         self.btn_start.config(state=tk.DISABLED)
         self.src_entry.config(state=tk.DISABLED)
         self.dst_entry.config(state=tk.DISABLED)
+        self.rb_cte.config(state=tk.DISABLED)
+        self.rb_nfe.config(state=tk.DISABLED)
 
         self.progress_bar.config(mode='indeterminate')
         self.progress_bar.start(10)
 
+        # Converter a seleção da UI para o Enum DocType
+        selected_doc_type = DocType[self.doc_type_var.get()]
+
         pipeline = ProcessingPipeline(self.queue)
-        # Passar o cancel_event para o pipeline
-        threading.Thread(target=pipeline.run, args=(rar_path, dst_dir, self.cancel_event), daemon=True).start()
+        threading.Thread(
+            target=pipeline.run,
+            args=(rar_path, dst_dir, self.cancel_event, selected_doc_type),
+            daemon=True
+        ).start()
 
     def check_queue(self):
         if self.is_processing and self.start_time > 0:
@@ -204,6 +229,8 @@ class CTetoExcelApp:
         self.btn_start.config(state=tk.NORMAL)
         self.src_entry.config(state=tk.NORMAL)
         self.dst_entry.config(state=tk.NORMAL)
+        self.rb_cte.config(state=tk.NORMAL)
+        self.rb_nfe.config(state=tk.NORMAL)
         self.progress_var.set(0)
         self.lbl_status.config(text="Aguardando início...", foreground="gray")
         self.lbl_count.config(text="Notas: 0 / 0 (0%)")
