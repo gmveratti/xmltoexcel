@@ -22,10 +22,10 @@ from core.models import (
 class TestDataTypeEnum:
     """Verifica a integridade do Enum DataType."""
 
-    def test_has_exactly_three_values(self):
-        """DataType deve ter exatamente CTE, EVENT e IGNORE."""
+    def test_has_exactly_four_values(self):
+        """DataType deve ter exatamente CTE, EVENT, IGNORE e NFE."""
         members = list(DataType)
-        assert len(members) == 3
+        assert len(members) == 4
 
     def test_contains_cte(self):
         assert DataType.CTE is not None
@@ -35,6 +35,9 @@ class TestDataTypeEnum:
 
     def test_contains_ignore(self):
         assert DataType.IGNORE is not None
+
+    def test_contains_nfe(self):
+        assert DataType.NFE is not None
 
     def test_members_are_unique(self):
         """Nenhum membro duplicado."""
@@ -60,6 +63,17 @@ class TestParseResult:
             data={"Tipo de Evento": "Cancelamento"},
         )
         assert result.data_type == DataType.EVENT
+
+    def test_accepts_nfe_list_data(self):
+        """ParseResult deve aceitar uma lista de dicts para NF-e (1 dict por item)."""
+        nfe_rows = [
+            {"chv_nfe_Id": "123", "nItem_nItem": "1"},
+            {"chv_nfe_Id": "123", "nItem_nItem": "2"},
+        ]
+        result = ParseResult(data_type=DataType.NFE, data=nfe_rows)
+        assert result.data_type == DataType.NFE
+        assert isinstance(result.data, list)
+        assert len(result.data) == 2
 
 
 class TestWorkerResult:
