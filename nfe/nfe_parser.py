@@ -35,9 +35,8 @@ class NFeParser(BaseXMLParser):
         if inf_nfe is None:
             return None
 
-        # 1. Extrai chave de acesso do atributo Id da tag infNFe
-        raw_id = inf_nfe.get("Id", "")
-        chave = raw_id.replace("NFe", "", 1)
+        # Extrai chave de acesso mantendo o prefixo "NFe" conforme padrão fiscal
+        chave = inf_nfe.get("Id", "")
 
         # 2. Monta o dicionário base com os dados gerais da nota (replicados em cada linha)
         base_data = self._extract_base_data(inf_nfe, chave)
