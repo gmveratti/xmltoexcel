@@ -46,10 +46,10 @@ Cada módulo de funcionalidade deve ser autocontido, expondo apenas o necessári
 5. Se você identificar um código meu que fere a modularidade ou a orientação a objetos, aponte o erro e sugira a refatoração.
 6. Forneça exemplos de código limpos, com tratamento de erros adequado e tipagem forte sempre que a linguagem permitir.
 
-# 📄 Escopo do Projeto: Conversor XML para Excel (CT-e)
+# 📄 Escopo do Projeto: Conversor XML para Excel (CT-e e NF-e)
 
 ## 🎯 Objetivo Principal
-O **Conversor XML para Excel** é uma ferramenta de automação fiscal de alta performance desenvolvida em Python. O seu objetivo é processar lotes massivos de arquivos XML do SEFAZ (Conhecimentos de Transporte Eletrônico - CT-e e seus respectivos Eventos), extrair os dados financeiros/fiscais de forma estruturada, normalizar as nomenclaturas dinâmicas das transportadoras e exportar o resultado para uma planilha Excel pronta para a conciliação contábil.
+O **Conversor XML para Excel** é uma ferramenta de automação fiscal de alta performance desenvolvida em Python. O seu objetivo é processar lotes massivos de arquivos XML do SEFAZ (Conhecimentos de Transporte Eletrônico - CT-e e Notas Fiscais Eletrônicas - NF-e, juntamente com seus respectivos Eventos). Extrai os dados financeiros/fiscais de forma estruturada, normaliza nomenclaturas dinâmicas e exporta o resultado para uma planilha Excel pronta para conciliação contábil e auditoria em sistemas ERP.
 
 ---
 
@@ -64,9 +64,11 @@ O projeto foi desenhado sob os princípios de *Clean Code*, processamento parale
 
 ### 2. Parsers de Dados (Inteligência Fiscal)
 * **Performance C-Level:** As buscas na árvore do XML utilizam o motor nativo em C (`xml.etree.ElementTree` via XPath e iteração direta), reduzindo o I/O de disco a uma única leitura por ficheiro.
-* **Roteador Inteligente (De-Para):** Um dicionário de sinônimos (`COMPONENTS_MAP`) analisa a tag de texto livre `<xNome>` das transportadoras e roteia variações (ex: "FRT PESO", "FRETE POR PESO") para colunas padronizadas (`comp_FRETE_PESO`), garantindo precisão matemática.
-* **Soma Cumulativa:** Se uma nota apresentar múltiplas cobranças da mesma natureza (ex: dois pedágios), o *parser* soma os valores automaticamente na mesma coluna para evitar perda de dados.
-* **Isolamento de Eventos:** Separa nativamente os ficheiros de CT-e padrão dos Eventos (Cancelamentos, Cartas de Correção - CC-e, Prestação em Desacordo).
+* **Modelo Híbrido (NF-e):** Combina mapeamento estrutural exaustivo com rede de segurança para tags dinâmicas. Tags não previstas pela SEFAZ ou customizadas por parceiros (ex: *Amazon*) são captadas e enviadas à coluna `Extra_Tags_Dinamicas`.
+* **Flattening de Itens (NF-e):** No parser de Notas Fiscais, o cabeçalho base é multiplicado por cada item (`<det>`), entregando uma saída de Excel relacional (1 linha = 1 produto).
+* **Roteador Inteligente (CT-e):** Um dicionário de sinônimos analiza a tag livre `<xNome>` das transportadoras e roteia variações (ex: "FRETE POR PESO", "FRT PESO") para colunas padronizadas.
+* **Soma Cumulativa (CT-e):** Se a mesma nota apresentar múltiplas cobranças da mesma natureza, os valores são unificados para impedir a perda na exportação.
+* **Strategy Pattern:** Implementa uma barreira protetiva no processamento que identifica o motor adequado e move notas divergentes para a Quarentena. Módulo separa ativamente CT-e e NF-e dos seus Eventos (Cancelamentos, CC-e, etc.).
 
 ### 3. Interface e Usabilidade (UI)
 * **Input Híbrido / Sandboxing:** O utilizador pode selecionar ficheiros compactados (`.zip`, `.rar`) ou diretórios inteiros. O sistema clona os ficheiros para uma zona de *sandbox* temporária, garantindo que a pasta original da empresa não seja alterada ou corrompida.
@@ -79,8 +81,8 @@ O projeto foi desenhado sob os princípios de *Clean Code*, processamento parale
 
 O ficheiro final é gerado com tipagem de dados estrita, garantindo que o Excel reconheça datas nativamente (`DD/MM/YYYY HH:MM:SS`) e valores como moeda:
 
-* **Aba 1 (CTe Data):** Consolida todos os Conhecimentos de Transporte ativos, com as colunas formatadas em padrão contábil (`#,##0.00`).
-* **Aba 2 (Eventos e Correções):** Log de auditoria contendo as Chaves de Acesso, Tipo de Evento (Cancelado/CC-e), Data e a Justificativa/Detalhe da alteração.
+* **Aba 1 (CTe Data / NFe Data):** Consolida todos os documentos fiscais em formato horizontal com flattening de produtos (NF-e) ou roteamento de componentes (CT-e). As colunas são formatadas em padrão contábil estrito (`#,##0.00`).
+* **Aba 2 (Eventos e Correções):** Log de auditoria unificado contendo as Chaves de Acesso, Tipo de Evento (Cancelamento/CC-e), Data, e Justificativa.
 
 ---
 
