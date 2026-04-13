@@ -96,19 +96,8 @@ class TestNFeParserValidXML:
         assert result[0]["total_ICMSTot_vNF"] == result[1]["total_ICMSTot_vNF"]
         assert result[0]["dest_xNome"] == result[1]["dest_xNome"]
 
-    def test_dynamic_tags_fallback_is_empty_when_no_unknowns(self, nfe_root):
-        """A coluna de tags dinâmicas Extra_Tags_Dinamicas fica vazia quando tudo já é parseado."""
-        result = NFeParser(nfe_root).extract_data()
-        assert result[0]["Extra_Tags_Dinamicas"] == ""
-
-
-class TestNFeParserAmazonOrder:
-    """Testa extração do Pedido Amazon e destinatário com CPF."""
-
-    def test_amazon_order_extracted(self, nfe_amazon_root):
-        """Regex extrai o número do pedido Amazon do infCpl."""
-        result = NFeParser(nfe_amazon_root).extract_data()
-        assert result[0]["ext_Pedido_Amazon"] == "123-4567890-1234567"
+class TestNFeParserCPFAndInfCpl:
+    """Testa destinatário com CPF e campo infCpl."""
 
     def test_inf_cpl_stored(self, nfe_amazon_root):
         """Texto completo do infCpl armazenado."""

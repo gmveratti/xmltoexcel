@@ -94,7 +94,7 @@ MAX_COLUMN_WIDTH: int = 50
 EVENT_DETAIL_COL_WIDTH: int = 80
 EVENT_KEY_COL_WIDTH: int = 50
 
-# ==================== NF-e Headers (Mapeamento Exaustivo + Híbrido) ====================
+# ==================== NF-e Headers (Estritamente 1:1 com o CSV) ====================
 NFE_HEADERS: List[str] = [
     "NFe", "chv_nfe_Id",
     "ide", "ide_cUF", "ide_cNF", "ide_natOp", "ide_mod", "ide_serie", "ide_nNF", "ide_dhEmi", 
@@ -129,9 +129,7 @@ NFE_HEADERS: List[str] = [
     "transp", "transp_modFrete", "transp_transporta_CNPJ", "transp_transporta_CPF", "transp_transporta_xNome",
     "cobr", "cobr_fat_nFat", "cobr_fat_vOrig", "cobr_fat_vDesc", "cobr_fat_vLiq",
     "pag", "pag_detPag_tPag", "pag_detPag_vPag",
-    "infAdic", "infAdic_infAdFisco", "infAdic_infCpl",
-    "ext_Pedido_Amazon",
-    "Extra_Tags_Dinamicas"
+    "infAdic", "infAdic_infAdFisco", "infAdic_infCpl"
 ]
 
 NFE_ACCOUNTING_COLUMNS: Set[str] = {

@@ -59,7 +59,9 @@ class ExcelExporter:
             "comp_VALOR_FRETE", "comp_VALOR_ICMS", "comp_VALOR_PEDAGIO"
         }
 
-        # Fundir cabeçalhos dinâmicos apenas se for CT-e
+        # --- COLUNAS DINÂMICAS EXCLUSIVAS PARA O CT-E ---
+        # A NF-e segue estritamente o layout engessado do CSV. O CT-e mantém a inteligência
+        # de separar as diferentes taxas da transportadora (comp_FRETE_PESO, comp_PEDAGIO, etc).
         dynamic_cols = []
         if self.doc_type == DocType.CTE:
             dynamic_cols = sorted({
