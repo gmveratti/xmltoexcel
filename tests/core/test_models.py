@@ -7,6 +7,7 @@ Garantem a integridade das estruturas de dados utilizadas pelo pipeline.
 
 from core.models import (
     DataType,
+    DocType,
     ParseResult,
     ErrorInfo,
     WorkerResult,
@@ -22,10 +23,10 @@ from core.models import (
 class TestDataTypeEnum:
     """Verifica a integridade do Enum DataType."""
 
-    def test_has_exactly_three_values(self):
-        """DataType deve ter exatamente CTE, EVENT e IGNORE."""
+    def test_has_exactly_four_values(self):
+        """DataType deve ter CTE, NFE, EVENT e IGNORE."""
         members = list(DataType)
-        assert len(members) == 3
+        assert len(members) == 4
 
     def test_contains_cte(self):
         assert DataType.CTE is not None
@@ -35,6 +36,9 @@ class TestDataTypeEnum:
 
     def test_contains_ignore(self):
         assert DataType.IGNORE is not None
+
+    def test_contains_nfe(self):
+        assert DataType.NFE is not None
 
     def test_members_are_unique(self):
         """Nenhum membro duplicado."""
@@ -60,6 +64,41 @@ class TestParseResult:
             data={"Tipo de Evento": "Cancelamento"},
         )
         assert result.data_type == DataType.EVENT
+
+    def test_accepts_nfe_list_data(self):
+        """NF-e retorna List[Dict] — ParseResult deve aceitar."""
+        items = [
+            {"chv_nfe_Id": "123", "nItem": "1"},
+            {"chv_nfe_Id": "123", "nItem": "2"},
+        ]
+        result = ParseResult(data_type=DataType.NFE, data=items)
+        assert result.data_type == DataType.NFE
+        assert isinstance(result.data, list)
+        assert len(result.data) == 2
+
+
+class TestDocTypeEnum:
+    """Verifica a integridade do Enum DocType."""
+
+    def test_has_exactly_two_values(self):
+        """DocType deve ter CTE e NFE."""
+        members = list(DocType)
+        assert len(members) == 2
+
+    def test_contains_cte(self):
+        assert DocType.CTE is not None
+
+    def test_contains_nfe(self):
+        assert DocType.NFE is not None
+
+    def test_lookup_by_name(self):
+        """UI converte string para Enum via DocType[name]."""
+        assert DocType["CTE"] == DocType.CTE
+        assert DocType["NFE"] == DocType.NFE
+
+    def test_members_are_unique(self):
+        values = [member.value for member in DocType]
+        assert len(values) == len(set(values))
 
 
 class TestWorkerResult:

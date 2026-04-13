@@ -350,3 +350,248 @@ def event_desacordo_root() -> ET.Element:
 def event_unknown_code_root() -> ET.Element:
     """Evento com código desconhecido (999999)."""
     return ET.fromstring(EVENT_UNKNOWN_CODE_XML)
+
+
+# ==================== NF-e Fixtures ====================
+
+NS_NFE = "http://www.portalfiscal.inf.br/nfe"
+
+VALID_NFE_XML = f"""\
+<nfeProc xmlns="{NS_NFE}">
+  <NFe>
+    <infNFe Id="NFe35250312345678000195550010000001231000001230" versao="4.00">
+      <ide>
+        <natOp>VENDA DE MERCADORIAS</natOp>
+        <nNF>123</nNF>
+        <dhEmi>2025-03-20T10:30:00-03:00</dhEmi>
+        <tpNF>1</tpNF>
+      </ide>
+      <emit>
+        <CNPJ>12345678000195</CNPJ>
+        <xNome>EMPRESA EMITENTE LTDA</xNome>
+      </emit>
+      <dest>
+        <CNPJ>98765432000100</CNPJ>
+        <xNome>CLIENTE DESTINATARIO SA</xNome>
+        <enderDest>
+          <UF>SP</UF>
+          <xMun>SAO PAULO</xMun>
+        </enderDest>
+      </dest>
+      <det nItem="1">
+        <prod>
+          <cProd>PROD001</cProd>
+          <cEAN>7891234567890</cEAN>
+          <xProd>TECLADO MECANICO RGB</xProd>
+          <NCM>84716052</NCM>
+          <CFOP>5102</CFOP>
+          <qCom>10.0000</qCom>
+          <vUnCom>150.0000</vUnCom>
+          <vProd>1500.00</vProd>
+        </prod>
+        <imposto>
+          <ICMS><ICMS00><vICMS>270.00</vICMS></ICMS00></ICMS>
+        </imposto>
+      </det>
+      <det nItem="2">
+        <prod>
+          <cProd>PROD002</cProd>
+          <cEAN>7891234567891</cEAN>
+          <xProd>MOUSE GAMER WIRELESS</xProd>
+          <NCM>84716052</NCM>
+          <CFOP>5102</CFOP>
+          <qCom>5.0000</qCom>
+          <vUnCom>200.0000</vUnCom>
+          <vProd>1000.00</vProd>
+        </prod>
+        <imposto>
+          <ICMS><ICMS00><vICMS>180.00</vICMS></ICMS00></ICMS>
+        </imposto>
+      </det>
+      <total>
+        <ICMSTot>
+          <vBC>2500.00</vBC>
+          <vICMS>450.00</vICMS>
+          <vProd>2500.00</vProd>
+          <vFrete>50.00</vFrete>
+          <vNF>2550.00</vNF>
+        </ICMSTot>
+      </total>
+    </infNFe>
+  </NFe>
+</nfeProc>"""
+
+
+NFE_WITH_AMAZON_ORDER_XML = f"""\
+<nfeProc xmlns="{NS_NFE}">
+  <NFe>
+    <infNFe Id="NFe35250399887766000155550010000009991000009990" versao="4.00">
+      <ide>
+        <natOp>VENDA</natOp>
+        <nNF>999</nNF>
+        <dhEmi>2025-03-25T14:00:00-03:00</dhEmi>
+        <tpNF>1</tpNF>
+      </ide>
+      <emit>
+        <CNPJ>99887766000155</CNPJ>
+        <xNome>LOJA ONLINE LTDA</xNome>
+      </emit>
+      <dest>
+        <CPF>12345678901</CPF>
+        <xNome>JOAO DA SILVA</xNome>
+        <enderDest>
+          <UF>RJ</UF>
+          <xMun>RIO DE JANEIRO</xMun>
+        </enderDest>
+      </dest>
+      <det nItem="1">
+        <prod>
+          <cProd>AMZ001</cProd>
+          <cEAN>SEM GTIN</cEAN>
+          <xProd>FONE BLUETOOTH</xProd>
+          <NCM>85183000</NCM>
+          <CFOP>6102</CFOP>
+          <qCom>1.0000</qCom>
+          <vUnCom>299.9000</vUnCom>
+          <vProd>299.90</vProd>
+        </prod>
+      </det>
+      <total>
+        <ICMSTot>
+          <vBC>299.90</vBC>
+          <vICMS>53.98</vICMS>
+          <vProd>299.90</vProd>
+          <vFrete>0.00</vFrete>
+          <vNF>299.90</vNF>
+        </ICMSTot>
+      </total>
+      <infAdic>
+        <infCpl>Numero do pedido da compra: 123-4567890-1234567. Obrigado pela preferencia.</infCpl>
+      </infAdic>
+    </infNFe>
+  </NFe>
+</nfeProc>"""
+
+
+NFE_NO_DET_XML = f"""\
+<nfeProc xmlns="{NS_NFE}">
+  <NFe>
+    <infNFe Id="NFe35250300000000000000550010000000011000000010" versao="4.00">
+      <ide>
+        <natOp>REMESSA</natOp>
+        <nNF>1</nNF>
+        <dhEmi>2025-01-01T00:00:00-03:00</dhEmi>
+        <tpNF>1</tpNF>
+      </ide>
+      <emit>
+        <CNPJ>00000000000000</CNPJ>
+        <xNome>EMITENTE VAZIO</xNome>
+      </emit>
+      <total>
+        <ICMSTot>
+          <vBC>0.00</vBC>
+          <vICMS>0.00</vICMS>
+          <vProd>0.00</vProd>
+          <vFrete>0.00</vFrete>
+          <vNF>0.00</vNF>
+        </ICMSTot>
+      </total>
+    </infNFe>
+  </NFe>
+</nfeProc>"""
+
+
+INVALID_NFE_XML = f"""\
+<nfeProc xmlns="{NS_NFE}">
+  <protNFe>
+    <infProt>
+      <tpAmb>1</tpAmb>
+      <nProt>135250000012345</nProt>
+    </infProt>
+  </protNFe>
+</nfeProc>"""
+
+
+NFE_EVENT_CANCELAMENTO_XML = f"""\
+<procEventoNFe xmlns="{NS_NFE}">
+  <evento>
+    <infEvento>
+      <tpEvento>110111</tpEvento>
+      <chNFe>35250312345678000195550010000001231000001230</chNFe>
+      <dhEvento>2025-03-21T09:00:00-03:00</dhEvento>
+      <detEvento>
+        <xJust>Erro na emissao da nota fiscal</xJust>
+      </detEvento>
+    </infEvento>
+  </evento>
+</procEventoNFe>"""
+
+
+NFE_EVENT_CCE_XML = f"""\
+<procEventoNFe xmlns="{NS_NFE}">
+  <evento>
+    <infEvento>
+      <tpEvento>110110</tpEvento>
+      <chNFe>35250312345678000195550010000001231000001230</chNFe>
+      <dhEvento>2025-03-22T11:00:00-03:00</dhEvento>
+      <detEvento>
+        <xCorrecao>Correcao no endereco do destinatario</xCorrecao>
+      </detEvento>
+    </infEvento>
+  </evento>
+</procEventoNFe>"""
+
+
+NFE_EVENT_NO_INFO_XML = f"""\
+<nfeProc xmlns="{NS_NFE}">
+  <protNFe>
+    <infProt>
+      <tpAmb>1</tpAmb>
+    </infProt>
+  </protNFe>
+</nfeProc>"""
+
+
+# ==================== NF-e Pytest Fixtures ====================
+
+@pytest.fixture
+def nfe_root() -> ET.Element:
+    """NF-e válida com 2 produtos para testar flattening."""
+    return ET.fromstring(VALID_NFE_XML)
+
+
+@pytest.fixture
+def nfe_amazon_root() -> ET.Element:
+    """NF-e com Pedido Amazon no infCpl e destinatário CPF."""
+    return ET.fromstring(NFE_WITH_AMAZON_ORDER_XML)
+
+
+@pytest.fixture
+def nfe_no_det_root() -> ET.Element:
+    """NF-e sem itens (<det>) — deve retornar apenas o cabeçalho."""
+    return ET.fromstring(NFE_NO_DET_XML)
+
+
+@pytest.fixture
+def nfe_invalid_root() -> ET.Element:
+    """NF-e SEM <infNFe> — deve retornar None."""
+    return ET.fromstring(INVALID_NFE_XML)
+
+
+@pytest.fixture
+def nfe_event_cancelamento_root() -> ET.Element:
+    """Evento de Cancelamento NF-e (110111)."""
+    return ET.fromstring(NFE_EVENT_CANCELAMENTO_XML)
+
+
+@pytest.fixture
+def nfe_event_cce_root() -> ET.Element:
+    """Evento de CC-e NF-e (110110) com xCorrecao."""
+    return ET.fromstring(NFE_EVENT_CCE_XML)
+
+
+@pytest.fixture
+def nfe_event_no_info_root() -> ET.Element:
+    """XML NF-e sem <infEvento> — deve retornar None."""
+    return ET.fromstring(NFE_EVENT_NO_INFO_XML)
+
