@@ -1,13 +1,10 @@
-# core/constants.py
+# cte/constants.py
 
 from typing import List, Dict, Set
 
-# ==================== XML / Fiscal ====================
+CTE_NAMESPACE: Dict[str, str] = {"ns": "http://www.portalfiscal.inf.br/cte"}
 
-XML_NAMESPACE: Dict[str, str] = {"ns": "http://www.portalfiscal.inf.br/cte"}
-
-# Ordem fixa das colunas base (As colunas dinâmicas "comp_*" serão adicionadas automaticamente no final)
-EXCEL_HEADERS: List[str] = [
+CTE_HEADERS: List[str] = [
     "(CTe)", "chv_cte_Id", "(ide)", "ide_cUF", "ide_cCT", "ide_CFOP", "ide_natOp",
     "ide_mod", "ide_serie", "ide_nCT", "ide_dhEmi", "ide_tpImp", "ide_tpEmis",
     "ide_cDV", "ide_tpAmb", "ide_tpCTe", "ide_procEmi", "ide_verProc",
@@ -62,8 +59,7 @@ EXCEL_HEADERS: List[str] = [
     "(infCteComp)", "infCteComp_chCTe"
 ]
 
-# Set para ignorar as colunas que têm tratamento especial (Impostos e NF-e)
-SKIP_COLS: Set[str] = {
+CTE_SKIP_COLS: Set[str] = {
     "imp_CST", "imp_vBC", "imp_pICMS", "imp_vICMS",
     "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
     "imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF",
@@ -71,25 +67,47 @@ SKIP_COLS: Set[str] = {
     "chv_cte_Id", "infNFe_chave"
 }
 
-# Cabeçalhos fixos para aba de eventos
-EVENT_SHEET_HEADERS: List[str] = [
-    "Chave de Acesso (Referência)",
-    "Tipo de Evento",
-    "Data do Evento",
-    "Detalhes / Justificativa"
-]
+CTE_ACCOUNTING_COLUMNS: Set[str] = {
+    "vPrest_vTPrest", "vPrest_vRec", "imp_vBC", "imp_pICMS",
+    "imp_vICMS", "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
+    "imp_ICMSOutraUF_vBCOutraUF", "imp_ICMSOutraUF_pICMSOutraUF",
+    "imp_ICMSOutraUF_vICMSOutraUF", "imp_vTotTrib",
+}
 
-# ==================== UI ====================
-
-WINDOW_TITLE: str = "Conversor de XML para Excel"
-WINDOW_SIZE: str = "600x380"
-QUEUE_POLL_INTERVAL_MS: int = 100
-PROGRESS_UPDATE_INTERVAL: int = 50
-
-# ==================== Excel Styling ====================
-
-GRAY_FILL_COLOR: str = "D3D3D3"
-ACCOUNTING_FORMAT: str = '#,##0.00'
-MAX_COLUMN_WIDTH: int = 50
-EVENT_DETAIL_COL_WIDTH: int = 80
-EVENT_KEY_COL_WIDTH: int = 50
+COMPONENTS_MAP: Dict[str, str] = {
+    "FRETE PESO":       "comp_FRETE_PESO",
+    "FRETE_PESO":       "comp_FRETE_PESO",
+    "FRT PESO":         "comp_FRETE_PESO",
+    "FRT_PESO":         "comp_FRETE_PESO",
+    "FRETEPESO":        "comp_FRETE_PESO",
+    "FRETE VALOR":      "comp_FRETE_VALOR",
+    "FRETE_VALOR":      "comp_FRETE_VALOR",
+    "FRT VALOR":        "comp_FRETE_VALOR",
+    "FRT_VALOR":        "comp_FRETE_VALOR",
+    "FRETEVALOR":       "comp_FRETE_VALOR",
+    "FRETE":            "comp_FRETE_VALOR",
+    "FRT":              "comp_FRETE_VALOR",
+    "PEDAGIO":          "comp_PEDAGIO",
+    "PEDÁGIO":          "comp_PEDAGIO",
+    "PEDAGIO REPASSE":  "comp_PEDAGIO",
+    "GRIS":             "comp_GRIS",
+    "GERENCIAMENTO DE RISCO":  "comp_GRIS",
+    "GERENCIAMENTO RISCO":     "comp_GRIS",
+    "GERENCIAMENTO_RISCO":     "comp_GRIS",
+    "G.R.I.S":          "comp_GRIS",
+    "G.R.I.S.":         "comp_GRIS",
+    "TAS":              "comp_TAS",
+    "TAXA ADM SEGURO":  "comp_TAS",
+    "ADEME":            "comp_ADEME",
+    "AD VALOREM":       "comp_ADEME",
+    "ADVALOREM":        "comp_ADEME",
+    "DESPACHO":         "comp_DESPACHO",
+    "TAXA DESPACHO":    "comp_DESPACHO",
+    "SEC/CAT":          "comp_SEC_CAT",
+    "SEC CAT":          "comp_SEC_CAT",
+    "SECCAT":           "comp_SEC_CAT",
+    "IMPOSTO":          "comp_IMPOSTOS",
+    "IMPOSTOS":         "comp_IMPOSTOS",
+    "TRIBUTO":          "comp_IMPOSTOS",
+    "TRIBUTOS":         "comp_IMPOSTOS",
+}

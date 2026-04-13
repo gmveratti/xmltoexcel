@@ -33,4 +33,4 @@ jobs:
       run: uv run pytest -v --tb=short
 
     - name: Fail if coverage below threshold
-      run: uv run pytest --cov-fail-under=80 --cov=parsers --cov=core/models.py --cov=core/constants.py -q
+      run: uv run pytest --cov-fail-under=80 --cov=cte --cov=nfe --cov=shared/models.py --cov=shared/constants.py -q

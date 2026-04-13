@@ -5,7 +5,7 @@
 Garantem a integridade das estruturas de dados utilizadas pelo pipeline.
 """
 
-from core.models import (
+from shared.models import (
     DataType,
     ParseResult,
     ErrorInfo,
@@ -22,10 +22,10 @@ from core.models import (
 class TestDataTypeEnum:
     """Verifica a integridade do Enum DataType."""
 
-    def test_has_exactly_three_values(self):
-        """DataType deve ter exatamente CTE, EVENT e IGNORE."""
+    def test_has_exactly_four_values(self):
+        """DataType deve ter exatamente CTE, NFE, EVENT e IGNORE."""
         members = list(DataType)
-        assert len(members) == 3
+        assert len(members) == 4
 
     def test_contains_cte(self):
         assert DataType.CTE is not None
@@ -35,6 +35,9 @@ class TestDataTypeEnum:
 
     def test_contains_ignore(self):
         assert DataType.IGNORE is not None
+
+    def test_contains_nfe(self):
+        assert DataType.NFE is not None
 
     def test_members_are_unique(self):
         """Nenhum membro duplicado."""

@@ -6,7 +6,7 @@ A lógica é testada em isolamento sem rodar o ProcessPoolExecutor —
 validamos apenas o algoritmo de sets que decide se uma nota é duplicata.
 """
 
-from core.models import DataType
+from shared.models import DataType
 
 
 class TestCteDeduplication:

@@ -8,7 +8,7 @@ e códigos desconhecidos para validar o EVENT_MAP e a lógica de detalhes.
 
 import xml.etree.ElementTree as ET
 
-from parsers.cte_event_parser import CTeEventParser, EVENT_MAP
+from cte.event_parser import CTeEventParser, EVENT_MAP
 
 
 # ==================== Validação Estrutural ====================

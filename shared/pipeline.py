@@ -1,4 +1,4 @@
-# core/pipeline.py
+# shared/pipeline.py
 
 import logging
 import os
@@ -6,16 +6,21 @@ import shutil
 import concurrent.futures
 import queue
 import threading
+from functools import partial
 from typing import List, Dict, Any
 
-from core.archive_handler import ArchiveHandler
-from core.excel_exporter import ExcelExporter
-from core.constants import EXCEL_HEADERS, PROGRESS_UPDATE_INTERVAL
-from core.models import (
+from shared.archive_handler import ArchiveHandler
+from shared.excel_exporter import ExcelExporter
+from shared.worker import process_single_xml
+from shared.models import (
     WorkerResult, StatusMessage, StartMessage, ProgressMessage,
-    NoFilesMessage, DoneMessage, FatalErrorMessage, DataType
+    NoFilesMessage, DoneMessage, FatalErrorMessage, DataType, DocType
 )
-from core.worker import process_single_xml
+from shared.constants import PROGRESS_UPDATE_INTERVAL
+
+# IMPORTAÇÕES DOS CABEÇALHOS ISOLADOS:
+from cte.constants import CTE_HEADERS
+from nfe.constants import NFE_HEADERS
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +31,7 @@ class ProcessingPipeline:
     def __init__(self, ui_queue: queue.Queue):
         self.ui_queue = ui_queue
 
-    def run(self, archive_path: str, dst_dir: str, cancel_event: threading.Event = None):
+    def run(self, archive_path: str, dst_dir: str, cancel_event: threading.Event = None, doc_type: DocType = DocType.CTE):
         """Executa o pipeline completo. Envia mensagens para a UI via queue."""
         try:
             error_dir = os.path.join(dst_dir, "erros_quarentena")
@@ -50,8 +55,8 @@ class ProcessingPipeline:
                 self.ui_queue.put(StartMessage(total_files))
                 self.ui_queue.put(StatusMessage("Extraindo dados das notas (Multiprocessamento)..."))
 
-                all_cte_data, all_event_data, error_count = self._process_xmls(
-                    xml_files, total_files, error_dir, cancel_event
+                all_main_data, all_event_data, error_count = self._process_xmls(
+                    xml_files, total_files, error_dir, cancel_event, doc_type
                 )
 
                 if cancel_event and cancel_event.is_set():
@@ -62,9 +67,10 @@ class ProcessingPipeline:
                 base_name = os.path.splitext(os.path.basename(archive_path))[0]
                 output_filename = os.path.join(dst_dir, f"{base_name}.xlsx")
 
-                ExcelExporter(all_cte_data, EXCEL_HEADERS, all_event_data).export(output_filename)
+                headers = CTE_HEADERS if doc_type == DocType.CTE else NFE_HEADERS
+                ExcelExporter(all_main_data, headers, all_event_data, doc_type).export(output_filename)
 
-                total_success = len(all_cte_data) + len(all_event_data)
+                total_success = len(all_main_data) + len(all_event_data)
                 self.ui_queue.put(DoneMessage(total_files, total_success, error_count))
 
         except Exception as e:
@@ -72,9 +78,9 @@ class ProcessingPipeline:
             self.ui_queue.put(FatalErrorMessage(str(e)))
 
     def _process_xmls(self, xml_files: List[str], total_files: int,
-                      error_dir: str, cancel_event: threading.Event) -> tuple:
+                      error_dir: str, cancel_event: threading.Event, doc_type: DocType) -> tuple:
         """Processa XMLs em paralelo e gerencia quarentena de erros, com proteção de RAM."""
-        all_cte_data: List[Dict[str, Any]] = []
+        all_main_data: List[Dict[str, Any]] = []
         all_event_data: List[Dict[str, str]] = []
         error_count = 0
         duplicate_count = 0
@@ -89,7 +95,8 @@ class ProcessingPipeline:
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
             # FASE 1: OTIMIZAÇÃO DE MEMÓRIA -> executor.map com chunksize=100
             # Evita instanciar milhares de Futures simultâneos na memória
-            results = executor.map(process_single_xml, xml_files, chunksize=100)
+            func = partial(process_single_xml, doc_type=doc_type)
+            results = executor.map(func, xml_files, chunksize=100)
 
             for worker_result in results:
                 if cancel_event and cancel_event.is_set():
@@ -107,7 +114,15 @@ class ProcessingPipeline:
                         else:
                             if cte_key:
                                 seen_cte_keys.add(cte_key)
-                            all_cte_data.append(data)
+                            all_main_data.append(data)
+
+                    elif worker_result.result.data_type == DataType.NFE:
+                        items = data if isinstance(data, list) else [data]
+                        for item in items:
+                            nfe_key = item.get("chv_nfe_Id", "")
+                            # Como a NF-e tem multiplos itens para a mesma chv, não deduplicamos por chave aqui cegas. 
+                            # Eventualmente pode ser (chv, item_nro). Para já, inserimos os produtos.
+                            all_main_data.append(item)
 
                     elif worker_result.result.data_type == DataType.EVENT:
                         event_key = (
@@ -134,7 +149,7 @@ class ProcessingPipeline:
         if duplicate_count > 0:
             logger.info("Deduplicação: %d nota(s) duplicada(s) removida(s)", duplicate_count)
 
-        return all_cte_data, all_event_data, error_count
+        return all_main_data, all_event_data, error_count
 
     @staticmethod
     def _handle_quarantine(error_info, error_dir: str):

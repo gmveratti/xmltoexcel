@@ -8,12 +8,12 @@ import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from core.constants import WINDOW_TITLE, WINDOW_SIZE, QUEUE_POLL_INTERVAL_MS
-from core.models import (
+from shared.constants import WINDOW_TITLE, WINDOW_SIZE, QUEUE_POLL_INTERVAL_MS
+from shared.models import (
     StatusMessage, StartMessage, ProgressMessage,
-    NoFilesMessage, DoneMessage, FatalErrorMessage
+    NoFilesMessage, DoneMessage, FatalErrorMessage, DocType
 )
-from core.pipeline import ProcessingPipeline
+from shared.pipeline import ProcessingPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,15 @@ class CTetoExcelApp:
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         ttk.Label(main_frame, text="Configuração de Extração", style="Header.TLabel").pack(anchor=tk.W, pady=(0, 10))
+
+        # --- SELEÇÃO DO TIPO DE DOCUMENTO ---
+        self.doc_type_var = tk.StringVar(value="CTE")
+
+        type_frame = ttk.Frame(main_frame)
+        type_frame.pack(fill=tk.X, pady=(0, 10))
+        ttk.Label(type_frame, text="Tipo de Documento:").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(type_frame, text="CT-e", variable=self.doc_type_var, value="CTE").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Radiobutton(type_frame, text="NF-e (DANFE)", variable=self.doc_type_var, value="NFE").pack(side=tk.LEFT)
 
         # --- BLOCO DE ORIGEM ATUALIZADO (INPUT HÍBRIDO) ---
         ttk.Label(main_frame, text="Origem dos XMLs (Arquivo ou Pasta):").pack(anchor=tk.W)
@@ -146,9 +155,14 @@ class CTetoExcelApp:
         self.progress_bar.config(mode='indeterminate')
         self.progress_bar.start(10)
 
+        selected_doc_type = DocType(self.doc_type_var.get())
+
         pipeline = ProcessingPipeline(self.queue)
-        # Passar o cancel_event para o pipeline
-        threading.Thread(target=pipeline.run, args=(rar_path, dst_dir, self.cancel_event), daemon=True).start()
+        threading.Thread(
+            target=pipeline.run,
+            args=(rar_path, dst_dir, self.cancel_event, selected_doc_type),
+            daemon=True
+        ).start()
 
     def check_queue(self):
         if self.is_processing and self.start_time > 0:
