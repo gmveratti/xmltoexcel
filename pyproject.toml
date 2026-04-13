@@ -20,7 +20,7 @@ xmltoexcel = "main:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=parsers --cov=core --cov-report=term-missing"
+addopts = "--cov=parsers --cov=core.models --cov=core.constants --cov-report=term-missing"
 
 [tool.coverage.run]
 omit = ["ui/*", "main.py", "tests/*"]
