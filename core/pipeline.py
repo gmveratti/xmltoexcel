@@ -100,28 +100,16 @@ class ProcessingPipeline:
                     data = worker_result.result.data
 
                     if worker_result.result.data_type == DataType.CTE:
-                        cte_key = data.get("chv_cte_Id", "")
-                        if cte_key and cte_key in seen_cte_keys:
-                            duplicate_count += 1
-                            logger.debug("CT-e duplicado ignorado: %s", cte_key)
-                        else:
-                            if cte_key:
-                                seen_cte_keys.add(cte_key)
+                        if self.check_and_register_cte(data, seen_cte_keys):
                             all_cte_data.append(data)
+                        else:
+                            duplicate_count += 1
 
                     elif worker_result.result.data_type == DataType.EVENT:
-                        event_key = (
-                            data.get("Chave de Acesso (Referência)", ""),
-                            data.get("Tipo de Evento", ""),
-                            data.get("Data do Evento", ""),
-                            data.get("Detalhes / Justificativa", "")
-                        )
-                        if event_key in seen_event_keys:
-                            duplicate_count += 1
-                            logger.debug("Evento duplicado ignorado: %s", event_key[0])
-                        else:
-                            seen_event_keys.add(event_key)
+                        if self.check_and_register_event(data, seen_event_keys):
                             all_event_data.append(data)
+                        else:
+                            duplicate_count += 1
 
                 if worker_result and worker_result.error:
                     error_count += 1
@@ -135,6 +123,45 @@ class ProcessingPipeline:
             logger.info("Deduplicação: %d nota(s) duplicada(s) removida(s)", duplicate_count)
 
         return all_cte_data, all_event_data, error_count
+
+    @staticmethod
+    def check_and_register_cte(data: Dict[str, Any], seen_keys: set) -> bool:
+        """Verifica se um CT-e é duplicata. Registra a chave e retorna True se for novo.
+
+        Returns:
+            True  → registro é novo, deve ser adicionado à lista de resultados.
+            False → registro é duplicata, deve ser descartado.
+        """
+        cte_key = data.get("chv_cte_Id", "")
+        if cte_key and cte_key in seen_keys:
+            logger.debug("CT-e duplicado ignorado: %s", cte_key)
+            return False
+        if cte_key:
+            seen_keys.add(cte_key)
+        return True
+
+    @staticmethod
+    def check_and_register_event(data: Dict[str, Any], seen_keys: set) -> bool:
+        """Verifica se um Evento é duplicata. Registra a tupla-chave e retorna True se for novo.
+
+        A chave composta é formada por (Chave de Acesso, Tipo de Evento, Data, Detalhes),
+        pois o mesmo CT-e pode ter múltiplos eventos legítimos de tipos diferentes.
+
+        Returns:
+            True  → evento é novo, deve ser adicionado à lista de resultados.
+            False → evento é duplicata, deve ser descartado.
+        """
+        event_key = (
+            data.get("Chave de Acesso (Referência)", ""),
+            data.get("Tipo de Evento", ""),
+            data.get("Data do Evento", ""),
+            data.get("Detalhes / Justificativa", ""),
+        )
+        if event_key in seen_keys:
+            logger.debug("Evento duplicado ignorado: %s", event_key[0])
+            return False
+        seen_keys.add(event_key)
+        return True
 
     @staticmethod
     def _handle_quarantine(error_info, error_dir: str):
