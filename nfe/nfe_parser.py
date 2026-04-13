@@ -343,7 +343,7 @@ class NFeParser(BaseXMLParser):
         """Extrai <ICMSUFDest> — DIFAL."""
         row["imposto_ICMSUFDest"] = ""
         _FIELDS = (
-            "vBCUFDest", "pFCPUFDest", "pICMSUFDest",
+            "vBCUFDest", "vBCFCPUFDest", "pFCPUFDest", "pICMSUFDest",
             "pICMSInter", "pICMSInterPart", "vFCPUFDest",
             "vICMSUFDest", "vICMSUFRemet",
         )
@@ -370,6 +370,7 @@ class NFeParser(BaseXMLParser):
             "imposto_COFINS", "imposto_COFINS_CST", "imposto_COFINS_vBC",
             "imposto_COFINS_pCOFINS", "imposto_COFINS_vCOFINS",
             "imposto_ICMSUFDest", "imposto_ICMSUFDest_vBCUFDest",
+            "imposto_ICMSUFDest_vBCFCPUFDest",
             "imposto_ICMSUFDest_pFCPUFDest", "imposto_ICMSUFDest_pICMSUFDest",
             "imposto_ICMSUFDest_pICMSInter", "imposto_ICMSUFDest_pICMSInterPart",
             "imposto_ICMSUFDest_vFCPUFDest", "imposto_ICMSUFDest_vICMSUFDest",
