@@ -8,12 +8,12 @@ import openpyxl
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.styles import PatternFill, Font, Alignment
 
-from core.constants import (
+from shared.constants import (
     GRAY_FILL_COLOR, ACCOUNTING_FORMAT, MAX_COLUMN_WIDTH,
     EVENT_SHEET_HEADERS, EVENT_DETAIL_COL_WIDTH, EVENT_KEY_COL_WIDTH,
     NFE_ACCOUNTING_COLUMNS
 )
-from core.models import DocType
+from shared.models import DocType
 
 logger = logging.getLogger(__name__)
 

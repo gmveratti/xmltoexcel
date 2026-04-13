@@ -8,12 +8,12 @@ import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-from core.constants import WINDOW_TITLE, WINDOW_SIZE, QUEUE_POLL_INTERVAL_MS
-from core.models import (
+from shared.constants import WINDOW_TITLE, WINDOW_SIZE, QUEUE_POLL_INTERVAL_MS
+from shared.models import (
     StatusMessage, StartMessage, ProgressMessage,
     NoFilesMessage, DoneMessage, FatalErrorMessage, DocType
 )
-from core.pipeline import ProcessingPipeline
+from shared.pipeline import ProcessingPipeline
 
 logger = logging.getLogger(__name__)
 

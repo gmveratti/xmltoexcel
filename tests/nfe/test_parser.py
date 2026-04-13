@@ -6,7 +6,7 @@ Valida o flattening (1 linha por produto), extração Híbrida (Schema + Dinâmi
 dados de emitente/destinatário, totais, e regex do Pedido Amazon.
 """
 
-from parsers.nfe_parser import NFeParser
+from nfe.parser import NFeParser
 
 
 class TestNFeParserValidXML:

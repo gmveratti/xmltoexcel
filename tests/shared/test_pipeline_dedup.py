@@ -8,8 +8,8 @@ Testamos diretamente os métodos estáticos de produção
 alteração no código de produção seja imediatamente detectada aqui.
 """
 
-from core.pipeline import ProcessingPipeline
-from core.models import DataType
+from shared.pipeline import ProcessingPipeline
+from shared.models import DataType
 
 
 class TestCteDeduplication:

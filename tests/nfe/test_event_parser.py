@@ -5,7 +5,7 @@
 Valida Cancelamento, CC-e, e cenários sem <infEvento>.
 """
 
-from parsers.nfe_event_parser import NFeEventParser
+from nfe.event_parser import NFeEventParser
 
 
 class TestNFeEventCancelamento:

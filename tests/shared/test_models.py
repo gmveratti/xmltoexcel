@@ -1,11 +1,11 @@
 # tests/core/test_models.py
 
-"""Testes unitários para os dataclasses e Enums do core.models.
+"""Testes unitários para os dataclasses e Enums do shared.models.
 
 Garantem a integridade das estruturas de dados utilizadas pelo pipeline.
 """
 
-from core.models import (
+from shared.models import (
     DataType,
     DocType,
     ParseResult,

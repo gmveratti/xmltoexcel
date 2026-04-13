@@ -8,7 +8,7 @@ extrai os campos corretamente, sem nenhuma dependência de disco.
 
 import xml.etree.ElementTree as ET
 
-from parsers.cte_parser import (
+from cte.parser import (
     CTeParser,
     _normalize_component_name,
     _resolve_component_column,

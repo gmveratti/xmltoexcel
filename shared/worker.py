@@ -4,11 +4,11 @@ import logging
 import traceback
 import xml.etree.ElementTree as ET
 
-from core.models import ParseResult, ErrorInfo, WorkerResult, DataType, DocType
-from parsers.cte_parser import CTeParser
-from parsers.cte_event_parser import CTeEventParser
-from parsers.nfe_parser import NFeParser
-from parsers.nfe_event_parser import NFeEventParser
+from shared.models import ParseResult, ErrorInfo, WorkerResult, DataType, DocType
+from cte.parser import CTeParser
+from cte.event_parser import CTeEventParser
+from nfe.parser import NFeParser
+from nfe.event_parser import NFeEventParser
 
 logger = logging.getLogger(__name__)
 

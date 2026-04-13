@@ -9,14 +9,14 @@ import threading
 from functools import partial
 from typing import List, Dict, Any
 
-from core.archive_handler import ArchiveHandler
-from core.excel_exporter import ExcelExporter
-from core.constants import EXCEL_HEADERS, NFE_HEADERS, PROGRESS_UPDATE_INTERVAL
-from core.models import (
+from shared.archive_handler import ArchiveHandler
+from shared.excel_exporter import ExcelExporter
+from shared.constants import EXCEL_HEADERS, NFE_HEADERS, PROGRESS_UPDATE_INTERVAL
+from shared.models import (
     WorkerResult, StatusMessage, StartMessage, ProgressMessage,
     NoFilesMessage, DoneMessage, FatalErrorMessage, DataType, DocType
 )
-from core.worker import process_single_xml
+from shared.worker import process_single_xml
 
 logger = logging.getLogger(__name__)
 

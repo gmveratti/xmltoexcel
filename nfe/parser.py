@@ -5,8 +5,8 @@ import logging
 from typing import Dict, List, Optional, Any
 import xml.etree.ElementTree as ET
 
-from core.constants import NFE_HEADERS
-from parsers.base_parser import BaseXMLParser
+from shared.constants import NFE_HEADERS
+from shared.base_parser import BaseXMLParser
 
 logger = logging.getLogger(__name__)
 _PEDIDO_AMAZON_RE = re.compile(r"Numero do pedido da compra:\s*([\d-]+)", re.IGNORECASE)
