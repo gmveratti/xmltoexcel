@@ -4,6 +4,7 @@ files/
 *.xlsx
 code_review_report.md
 *.log
+DOCUMENTACAO_ARQUITETURA.md
 
 # Arquivos compactados e XML
 *.rar

@@ -77,10 +77,10 @@ class ProcessingPipeline:
                     from nfe.nfe_constants import NFE_HEADERS
                     ExcelExporter(
                         cte_data=[], cte_headers=EXCEL_HEADERS,
-                        event_data=None,
+                        event_data=all_event_data,
                         nfe_data=all_nfe_data, doc_type="NFE"
                     ).export(output_filename)
-                    total_success = len(all_nfe_data)
+                    total_success = len(all_nfe_data) + len(all_event_data)
                 else:
                     ExcelExporter(
                         cte_data=all_cte_data, cte_headers=EXCEL_HEADERS,

@@ -98,4 +98,11 @@ def _process_nfe(root: ET.Element, xml_file: str) -> WorkerResult:
         # nfe_data é uma List[Dict] — uma entrada por produto
         return WorkerResult(result=ParseResult(DataType.NFE, nfe_data), error=None)
 
+    from nfe.nfe_event_parser import NFeEventParser
+    event_parser = NFeEventParser(root)
+    event_data = event_parser.extract_data()
+
+    if event_data is not None:
+        return WorkerResult(result=ParseResult(DataType.EVENT, event_data), error=None)
+
     return WorkerResult(result=ParseResult(DataType.IGNORE, None), error=None)
