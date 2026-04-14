@@ -50,6 +50,8 @@ class DoneMessage:
     total_read: int
     total_success: int
     total_errors: int
+    total_duplicates: int = 0
+    total_ignored: int = 0
 
 @dataclass
 class FatalErrorMessage:

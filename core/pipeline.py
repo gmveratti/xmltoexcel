@@ -61,7 +61,7 @@ class ProcessingPipeline:
                 self.ui_queue.put(StartMessage(total_files))
                 self.ui_queue.put(StatusMessage("Extraindo dados das notas (Multiprocessamento)..."))
 
-                all_cte_data, all_event_data, all_nfe_data, error_count = self._process_xmls(
+                all_cte_data, all_event_data, all_nfe_data, error_count, duplicate_count, ignored_count = self._process_xmls(
                     xml_files, total_files, error_dir, cancel_event, doc_type
                 )
 
@@ -89,7 +89,7 @@ class ProcessingPipeline:
                     ).export(output_filename)
                     total_success = len(all_cte_data) + len(all_event_data)
 
-                self.ui_queue.put(DoneMessage(total_files, total_success, error_count))
+                self.ui_queue.put(DoneMessage(total_files, total_success, error_count, duplicate_count, ignored_count))
 
         except Exception as e:
             logger.exception("Erro fatal no pipeline")
@@ -105,6 +105,7 @@ class ProcessingPipeline:
 
         error_count = 0
         duplicate_count = 0
+        ignored_count = 0
         processed_count = 0
 
         seen_cte_keys: set = set()
@@ -123,9 +124,12 @@ class ProcessingPipeline:
                 if cancel_event and cancel_event.is_set():
                     break
 
-                if worker_result and worker_result.result and worker_result.result.data is not None:
-                    data = worker_result.result.data
-                    data_type = worker_result.result.data_type
+                if worker_result and worker_result.result:
+                    if worker_result.result.data_type == DataType.IGNORE:
+                        ignored_count += 1
+                    elif worker_result.result.data is not None:
+                        data = worker_result.result.data
+                        data_type = worker_result.result.data_type
 
                     if data_type == DataType.CTE:
                         cte_key = data.get("chv_cte_Id", "")
@@ -177,7 +181,7 @@ class ProcessingPipeline:
         if duplicate_count > 0:
             logger.info("Deduplicação: %d nota(s)/item(ns) duplicado(s) removido(s)", duplicate_count)
 
-        return all_cte_data, all_event_data, all_nfe_data, error_count
+        return all_cte_data, all_event_data, all_nfe_data, error_count, duplicate_count, ignored_count
 
     @staticmethod
     def _handle_quarantine(error_info, error_dir: str):
