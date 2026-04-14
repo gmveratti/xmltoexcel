@@ -211,7 +211,12 @@ class CTetoExcelApp:
         elif isinstance(msg, DoneMessage):
             messagebox.showinfo(
                 "Sucesso",
-                f"Concluído!\n\nLidos: {msg.total_read}\nSucesso: {msg.total_success}\nQuarentena: {msg.total_errors}"
+                f"Concluído!\n\n"
+                f"Lidos: {msg.total_read}\n"
+                f"Sucesso: {msg.total_success}\n"
+                f"Quarentena: {msg.total_errors}\n"
+                f"Duplicados: {msg.total_duplicates}\n"
+                f"Ignorados: {msg.total_ignored}"
             )
             self.reset_ui()
 
