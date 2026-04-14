@@ -49,6 +49,10 @@ class ExcelExporter:
         if self.doc_type == "NFE":
             ws_nfe = wb.create_sheet(title="NF-e Data")
             self._build_nfe_sheet(ws_nfe)
+            
+            if self.event_data:
+                ws_events = wb.create_sheet(title="Eventos e Correções")
+                self._build_events_sheet(ws_events)
         else:
             ws_cte = wb.create_sheet(title="CTe Data")
             self._build_cte_sheet(ws_cte)
