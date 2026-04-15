@@ -4,7 +4,7 @@ import logging
 import multiprocessing
 import tkinter as tk
 
-from ui.main_window import CTetoExcelApp
+from ui.main_window import XMLtoExcelApp
 
 
 def main():
@@ -21,7 +21,7 @@ def main():
 
     # Inicia a Interface Gráfica
     root = tk.Tk()
-    CTetoExcelApp(root)
+    XMLtoExcelApp(root)
     root.mainloop()
 
 

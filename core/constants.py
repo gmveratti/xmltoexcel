@@ -68,7 +68,7 @@ SKIP_COLS: Set[str] = {
     "imp_vBCSTRet", "imp_vICMSSTRet", "imp_pICMSSTRet",
     "imp_ICMSOutraUF_CST", "imp_ICMSOutraUF_vBCOutraUF",
     "imp_ICMSOutraUF_pICMSOutraUF", "imp_ICMSOutraUF_vICMSOutraUF",
-    "chv_cte_Id", "infNFe_chave"
+    "chv_cte_Id", "chv_nfe_Id", "infNFe_chave"
 }
 
 # Cabeçalhos fixos para aba de eventos
