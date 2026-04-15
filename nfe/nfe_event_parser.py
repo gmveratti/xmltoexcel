@@ -3,7 +3,7 @@
 import logging
 from typing import Dict, Optional
 
-from parsers.base_parser import BaseXMLParser
+from core.parsers.base_parser import BaseXMLParser
 
 logger = logging.getLogger(__name__)
 

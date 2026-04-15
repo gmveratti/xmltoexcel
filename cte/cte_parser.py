@@ -7,7 +7,7 @@ from typing import Dict, Optional, Any
 import xml.etree.ElementTree as ET
 
 from core.constants import XML_NAMESPACE, EXCEL_HEADERS, SKIP_COLS
-from parsers.base_parser import BaseXMLParser
+from core.parsers.base_parser import BaseXMLParser
 
 logger = logging.getLogger(__name__)
 

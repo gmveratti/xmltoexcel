@@ -9,7 +9,7 @@ import logging
 import xml.etree.ElementTree as ET
 from typing import Dict, Any, List, Optional
 
-from parsers.base_parser import BaseXMLParser
+from core.parsers.base_parser import BaseXMLParser
 from nfe.nfe_constants import NFE_NAMESPACE
 
 logger = logging.getLogger(__name__)

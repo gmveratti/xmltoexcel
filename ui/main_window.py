@@ -253,20 +253,21 @@ class CTetoExcelApp:
             self.root.destroy()
 
     def _set_app_icon(self):
-        """Define o ícone da janela de forma portável."""
+        """Define o ícone da janela de forma portável utilizando pathlib."""
         import sys
+        from pathlib import Path
+
         if getattr(sys, 'frozen', False):
             # No binário compilado pelo PyInstaller
-            base_path = sys._MEIPASS
+            base_path = Path(sys._MEIPASS)
         else:
-            # Em modo de desenvolvimento (uv run main.py)
-            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            # Em modo de desenvolvimento
+            base_path = Path(__file__).parent.parent
             
-        icon_path = os.path.join(base_path, "assets", "ico.ico")
+        icon_path = base_path / "assets" / "ico.ico"
         
-        if os.path.exists(icon_path):
+        if icon_path.exists():
             try:
-                # Tenta definir o ícone no Windows (.ico)
-                self.root.iconbitmap(icon_path)
+                self.root.iconbitmap(str(icon_path))
             except Exception as e:
                 logger.warning("Não foi possível carregar o ícone da janela: %s", e)

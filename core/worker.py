@@ -5,24 +5,18 @@ import traceback
 import xml.etree.ElementTree as ET
 
 from core.models import ParseResult, ErrorInfo, WorkerResult, DataType
-from parsers.cte_parser import CTeParser
-from parsers.cte_event_parser import CTeEventParser
+from core.strategy import resolve_strategy
 
 logger = logging.getLogger(__name__)
-
-# Importação lazy do NFeParser para não poluir o namespace do CT-e
-# (e evitar problemas de import no multiprocessamento Windows)
-_NFE_SENTINEL = ".//{{http://www.portalfiscal.inf.br/nfe}}infNFe"
-_CTE_SENTINEL = ".//{{http://www.portalfiscal.inf.br/cte}}infCte"
 
 
 def process_single_xml(xml_file: str, doc_type: str = "CTE") -> WorkerResult:
     """
-    Processa um único arquivo XML.
+    Processa um único arquivo XML utilizando a estratégia correspondente.
 
     Args:
         xml_file: Caminho absoluto para o arquivo XML.
-        doc_type: "CTE" ou "NFE". Define o parser e a validação de compatibilidade.
+        doc_type: "CTE" ou "NFE". Define a estratégia de parsing.
 
     Returns:
         WorkerResult com resultado ou erro de quarentena.
@@ -31,10 +25,8 @@ def process_single_xml(xml_file: str, doc_type: str = "CTE") -> WorkerResult:
         tree = ET.parse(xml_file)
         root = tree.getroot()
 
-        if doc_type == "NFE":
-            return _process_nfe(root, xml_file)
-        else:
-            return _process_cte(root, xml_file)
+        strategy = resolve_strategy(doc_type)
+        return _process_document(root, xml_file, strategy)
 
     except ET.ParseError as e:
         return WorkerResult(
@@ -48,60 +40,19 @@ def process_single_xml(xml_file: str, doc_type: str = "CTE") -> WorkerResult:
         )
 
 
-def _process_cte(root: ET.Element, xml_file: str) -> WorkerResult:
-    """Ramo de processamento CT-e com validação de incompatibilidade."""
-    # Detecta NF-e enviada por engano no modo CT-e
-    nfe_ns = "http://www.portalfiscal.inf.br/nfe"
-    if root.find(f".//{{{nfe_ns}}}infNFe") is not None:
-        return WorkerResult(
-            result=None,
-            error=ErrorInfo(
-                xml_file,
-                "Incompatibilidade: Este XML é uma NF-e, mas o modo CT-e está selecionado.",
-                "Selecione o tipo 'NF-e / DANFE' na interface antes de processar."
-            )
-        )
+def _process_document(root: ET.Element, xml_file: str, strategy) -> WorkerResult:
+    """Ramo de processamento genérico baseado em estratégia."""
+    MainParser, EventParser = strategy.get_parsers()
+    
+    # 1. Tenta parsear como documento principal (CTE/NFE)
+    main_parser = MainParser(root)
+    main_data = main_parser.extract_data()
+    if main_data is not None:
+        return WorkerResult(result=ParseResult(strategy.main_data_type, main_data), error=None)
 
-    cte_parser = CTeParser(root)
-    cte_data = cte_parser.extract_data()
-    if cte_data is not None:
-        return WorkerResult(result=ParseResult(DataType.CTE, cte_data), error=None)
-
-    event_parser = CTeEventParser(root)
+    # 2. Tenta parsear como evento
+    event_parser = EventParser(root)
     event_data = event_parser.extract_data()
-    if event_data is not None:
-        return WorkerResult(result=ParseResult(DataType.EVENT, event_data), error=None)
-
-    return WorkerResult(result=ParseResult(DataType.IGNORE, None), error=None)
-
-
-def _process_nfe(root: ET.Element, xml_file: str) -> WorkerResult:
-    """Ramo de processamento NF-e com validação de incompatibilidade."""
-    from nfe.nfe_parser import NFeParser  # import local — padrão seguro no Windows multiprocess
-
-    # Detecta CT-e enviado por engano no modo NF-e
-    cte_ns = "http://www.portalfiscal.inf.br/cte"
-    if root.find(f".//{{{cte_ns}}}infCte") is not None:
-        return WorkerResult(
-            result=None,
-            error=ErrorInfo(
-                xml_file,
-                "Incompatibilidade: Este XML é um CT-e, mas o modo NF-e está selecionado.",
-                "Selecione o tipo 'CT-e (Transporte)' na interface antes de processar."
-            )
-        )
-
-    nfe_parser = NFeParser(root)
-    nfe_data = nfe_parser.extract_data()
-
-    if nfe_data is not None:
-        # nfe_data é uma List[Dict] — uma entrada por produto
-        return WorkerResult(result=ParseResult(DataType.NFE, nfe_data), error=None)
-
-    from nfe.nfe_event_parser import NFeEventParser
-    event_parser = NFeEventParser(root)
-    event_data = event_parser.extract_data()
-
     if event_data is not None:
         return WorkerResult(result=ParseResult(DataType.EVENT, event_data), error=None)
 

@@ -1,73 +1,69 @@
 # Conversor de XML para Excel (Alta Performance)
 
-O **Conversor de XML para Excel** é uma solução completa de pipeline de dados fiscais desenhada para processamento massivo. O software extrai informações de arquivos XML de CT-e (Conhecimento de Transporte Eletrônico) e Eventos (Cancelamentos e Correções) que estão dentro de arquivos compactados (`.rar` ou `.zip`), gerando uma planilha Excel (`.xlsx`) validada, organizada e pronta para o setor contábil.
+O **Conversor de XML para Excel** é uma solução completa de pipeline de dados fiscais desenhada para processamento massivo. O software extrai informações de arquivos XML de **CT-e** (Conhecimento de Transporte Eletrônico) e **NF-e** (Nota Fiscal Eletrônica / DANFE), gerando planilhas Excel (`.xlsx`) validadas, organizadas e prontas para a conciliação contábil.
 
 ---
 
 ## 🚀 Download e Instalação
 
-Você pode utilizar a aplicação através do binário executável nativo para Windows já compilado, sem necessidade de se preocupar com Python ou dependências e pastas auxiliares!
+Você pode utilizar a aplicação através do binário executável nativo para Windows já compilado, sem necessidade de se preocupar com Python ou dependências!
 
 **Passo-a-passo para baixar (Binário `.exe`):**
 1. Vá até a seção **[Releases](../../releases)** na página principal deste projeto no GitHub.
-2. Expanda os *Assets* da versão mais recente na listagem.
-3. Faça o Download apenas do arquivo **`.zip`** (ex: `XMLtoEXCEL.zip`).
-4. Dentro do arquivo compactado você encontrará o arquivo **`XMLtoEXCEL.exe`**.
-5. Descompacte o arquivo.
-6. Dê um duplo-clique. O aplicativo rodará independentemente sem instalação, contendo seu ecossistema, motor para WinRAR isolados e interfaces em seu próprio corpo!
+2. Expanda os *Assets* da versão mais recente.
+3. Faça o Download do arquivo **`.zip`** (ex: `XMLtoEXCEL.zip`).
+4. Descompacte o arquivo e execute o **`XMLtoEXCEL.exe`**.
 
 ---
 
 ## 🛠️ Como Utilizar
 
-O fluxo foi desenhado para processar desde pacotes enxutos (15 notas) como também varrer e validar enormes blocos contábeis trimestrais (150 mil notas).
+O sistema foi arquitetado para lidar com fechar de mês massivos (+50.000 notas) com alta velocidade e estabilidade.
 
-### 1. Inicialize a Aplicação 
-Ao dar um duplo clique no `.exe`, a interface em janela surgirá instanciada.
+### 1. Selecione a Origem dos XMLs
+O sistema possui **Input Híbrido**:
+- **Procurar Arquivo...**: Selecione arquivos compactados (`.rar` ou `.zip`). O motor interno faz a extração recursiva de todos os XMLs, mesmo que estejam em subpastas dentro do arquivo.
+- **Procurar Pasta...**: Selecione uma diretoria inteira no seu computador. O sistema varrerá todos os arquivos XML contidos nela.
 
-### 2. Selecione o Pacote de Origem
-- Pressione o botão superior **"Procurar..."** que acompanha o campo de entrada.
-- Selecione o arquivo em formato compactado (`.rar` ou `.zip`) em que os XMLs de fato estão.
-- **Diferencial (Busca Recursiva)**: Se dentro do seu `.zip` houver inúmeras outras pastas com outros subarquivos compactados, não há problemas. Nossa *engine* faz cascateamento de subníveis abrindo tudo e sugando exclusivamente XMLs reais.
+### 2. Selecione o Tipo de Documento
+Escolha o modo de processamento adequado:
+- **CT-e (Conhecimento de Transporte)**: Focado em fretes, impostos de transporte e componentes dinâmicos (Pedágio, Gris, Frete Peso, etc).
+- **NF-e / DANFE (Nota Fiscal de Produtos)**: Focado em itens de mercadoria, com a relação 1:N (uma nota gera várias linhas no Excel, uma para cada produto).
 
-### 3. Selecione o Destino do Relatório (.xlsx)
-- Pressione **"Procurar..."** na base inferior para apontar onde deseja que seu arquivo contábil definitivo seja salvo. *(Como conveniência, por padrão, o sistema irá querer sugerir a mesma localização da origem).*
-
-### 4. Execute a Análise
-Pressione com convicção **"Iniciar Processamento"**. Uma nova centralização ocorrerá em tela onde exibimos ao usuário final:
-- Os logs visuais com qual estágio nos deparamos agilmente (*"Buscando Arquivos", "Transferência em Paralelo", etc.*).
-- Uma **Barra de Progresso** real com totalizador extraído `Ex: 27150/30000 (90%)` associada também a um cronômetro na ponta oposta validando o seu tempo.
-  *(A arquitetura também é munida de uma verificação que reage e cancela as multithreads de forma imediata salvando lixos comissionados caso o cancelamento do processo aconteça acidentalmente via fechar botão vermelho `[X]`).*
+### 3. Selecione o Destino e Inicie
+- Aponte a pasta onde o Excel final será salvo.
+- Clique em **"Iniciar Processamento"**. Acompanhe o progresso em tempo real pela barra e pelo cronômetro.
 
 ---
 
-## ⚠️ Quarentena e Tratativa de Erros
+## 📊 O Que é Extraído?
 
-A resiliência matemática nos prova que nem todo documento baixado da nuvem do emissor vem correto ou atinge a integridade perfeita.
+### Para CT-e (Transporte):
+- **Dados Fiscais**: Chave de Acesso, CFOP, Natureza da Operação, Valores de Prestação.
+- **Participantes**: Emitente, Remetente, Destinatário, Expedidor, Recebedor.
+- **Roteador Inteligente de Componentes**: Normaliza nomes dinâmicos das transportadoras. Ex: "FRT PESO" e "FRETE POR PESO" são somados automaticamente na coluna `comp_FRETE_PESO`.
+- **Impostos**: Detalhamento completo de ICMS, ST e tributos totais.
 
-- **Um Erro nunca trava a Linha**: Um XML em corrupção absoluta passará sem travar as milhares de outras notas ao redor.
-- **Rastreabilidade Fiel e Pasta "erros_quarentena/"**: O documento violado é guardado no mesmo destino de Excel mas em uma central de quarentena. Ao lado de seu CPF corrompido ou erro real nas tags, será instanciado fisicamente um arquivo `.txt` como  `_LOG.txt` provando e dedurando para você por que aquela unidade contábil individual não serviu ou onde ela se encontra destruída.
+### Para NF-e (DANFE):
+- **Cabeçalho da Nota**: Dados do Emitente, Destinatário e Totais da Nota.
+- **Itens de Produto**: Extração detalhada de cada item (<det>), incluindo NCM, CFOP, Unidade, Quantidade, Valor Unitário e Valor Total do Produto.
+- **Impostos por Item**: Detalhamento de ICMS (CST/Origem/Base/Alíquota), IPI, PIS e COFINS para cada produto individualmente.
 
----
-
-## 📊 Estruturação e Colunas Finais Excel
-
-O resultado é gerado e espelhado com o nome exato original. Ex `Faturamento.zip -> Faturamento.xlsx`. E em sua anatomia o projeto tem a premissa de desconstruir o Conhecimento em:
-
-- **`(ide)`**: Informações base, Numerações fiscais.
-- **`(emit, rem, dest... etc)`**: Distribuidor Operacional entre Quem Paga e pra Onde Vai.
-- **`Bloco de Valoração e Taxação:`**: Extrema fidelidade de ICMS, STs ou Variáveis, com o adendo que a inteligência artificial da aplicação reza por manter todas colunas pre-formatadas perfeitamente para contabilização real *(R$, vírgula no decimal para Excel e Google Sheets `#,#0.00` permitindo equações em blocos e análises brutas!)*.
-- **`(Abas e MultiSheets)`**: Caso localizadas notas em correções textuais (Cancelamento, Substituição Fria, Eventos Eletrônicos), ele abrirá de modo higiênico uma nova aba exclusiva no Excel sem sujar a massa mestra principal.
+### Eventos e Cancelamentos:
+Para ambos os tipos, se houver arquivos de **Cancelamento** ou **Carta de Correção (CC-e)** no lote, o sistema cria uma segunda aba no Excel denominada "Eventos e Correções" com todo o histórico de alterações e justificativas.
 
 ---
 
-## 🎯 Escopo Geral do Projeto & Engenharia
+## ⚠️ Resiliência e Quarentena
 
-Este projeto não é um simples leitor de XML; foi arquitetado sob rigorosas validações de engenharia para lidar com imensos lotes de dados sem perda de estabilidade:
+- **Deduplicação Inteligente**: O sistema identifica chaves de acesso repetidas (mesmo que estejam em arquivos diferentes ou nomes diferentes) e mantém apenas uma ocorrência no Excel.
+- **Quarentena de Erros**: XMLs corrompidos ou mal formatados não travam o processo. Eles são isolados em uma pasta `erros_quarentena/` com um arquivo `_LOG.txt` explicando o motivo técnico da falha.
 
-1. **Proteção OOM (Out Of Memory):** Processamento via multiprocessamento (`chunksize`) bloqueia o carregamento gigantesco de arquivos que poderiam sobrecarregar o sistema operacional ou estourar a memória RAM ao processar milhares de notas simultâneas.
-2. **Motor Híbrido de Parsing:** A varredura de árvores XML foi otimizada para mesclar iterações nativas do `ElementTree` via linguagem C para garantir altíssima velocidade cirúrgica nas tags.
-3. **Escrita Contínua (*Write-Only*):** A geração do arquivo Excel acontece utilizando modo `write_only` da biblioteca nativa, construindo a planilha inteira como um *streaming log* direto no disco rígido sem escalar consumo da RAM.
-4. **Portabilidade Universal:** Ferramentas (Como o extrator WinRAR subjacente na pasta `bin/`) ficam embutidas e prontas para uso via detecção inteligente de path, ou nativas do OS, se existirem na máquina.
-5. **Autocorreção e "Funil Inteligente":** Contém algoritmos padronizados na extração que entendem e somam acumulativamente rubricas análogas de transportadoras (ex: `Pedagio 1` + `Pedagio 2` tornaram-se a consolidante oficial `comp_PEDAGIO`).
+---
 
+## 🎯 Engenharia de Alta Performance
+
+1. **Strategy Pattern**: Arquitetura modular que permite processar diferentes tipos de documentos sem acoplamento.
+2. **Multiprocessamento**: Distribui a carga de trabalho por todos os núcleos da CPU.
+3. **Memória O(1)**: Exportação via *Streaming* direto para o disco rígido, permitindo gerar planilhas gigantes sem estourar a memória RAM do computador.
+4. **Sandbox**: Todos os arquivos são processados em uma área temporária isolada, garantindo a integridade dos seus dados originais.

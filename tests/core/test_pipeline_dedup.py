@@ -1,45 +1,50 @@
 # tests/core/test_pipeline_dedup.py
 
-"""Testes unitários para a lógica de deduplicação do pipeline.
+"""Testes unitários para a lógica de deduplicação via Strategy Pattern.
 
-A lógica é testada em isolamento sem rodar o ProcessPoolExecutor —
-validamos apenas o algoritmo de sets que decide se uma nota é duplicata.
+Validamos que as estratégias implementam corretamente a lógica de
+deduplicação de chaves (Id puro no CTe, Id + nItem no NFe).
 """
 
 from core.models import DataType
+from cte.cte_strategy import CTeStrategy
+from nfe.nfe_strategy import NFeStrategy
 
 
-class TestCteDeduplication:
-    """Simula a lógica de deduplicação de CT-e (baseada em chv_cte_Id)."""
+class TestCteStrategyDeduplication:
+    """Valida a lógica de deduplicação na CTeStrategy."""
 
     def test_duplicate_cte_key_is_skipped(self):
         """A segunda ocorrência de uma chave idêntica deve ser descartada."""
-        seen_keys: set = set()
-        all_cte_data = []
-        duplicate_count = 0
+        strategy = CTeStrategy()
+        seen_main_keys: set = set()
+        all_main_data = []
+        all_event_data = []
+        seen_event_keys: set = set()
 
         entries = [
             {"chv_cte_Id": "35250312345678000195570010000012341000012340", "ide_nCT": "1234"},
             {"chv_cte_Id": "35250312345678000195570010000012341000012340", "ide_nCT": "1234"},  # Duplicada
-            {"chv_cte_Id": "33250399887766000155570010000044441000044440", "ide_nCT": "4444"},
         ]
 
+        dup_count = 0
         for data in entries:
-            cte_key = data.get("chv_cte_Id", "")
-            if cte_key and cte_key in seen_keys:
-                duplicate_count += 1
-            else:
-                if cte_key:
-                    seen_keys.add(cte_key)
-                all_cte_data.append(data)
+            dup_count += strategy.process_result_data(
+                data, DataType.CTE, all_main_data, all_event_data, 
+                seen_main_keys, seen_event_keys
+            )
 
-        assert len(all_cte_data) == 2
-        assert duplicate_count == 1
+        assert len(all_main_data) == 1
+        assert dup_count == 1
+        assert "35250312345678000195570010000012341000012340" in seen_main_keys
 
     def test_empty_cte_key_is_always_added(self):
         """Chave vazia não deve entrar no set de vistos, mas o dado é adicionado."""
-        seen_keys: set = set()
-        all_cte_data = []
+        strategy = CTeStrategy()
+        seen_main_keys: set = set()
+        all_main_data = []
+        all_event_data = []
+        seen_event_keys: set = set()
 
         entries = [
             {"chv_cte_Id": "", "ide_nCT": "0001"},
@@ -47,113 +52,92 @@ class TestCteDeduplication:
         ]
 
         for data in entries:
-            cte_key = data.get("chv_cte_Id", "")
-            if cte_key and cte_key in seen_keys:
-                pass  # skip duplicate
-            else:
-                if cte_key:
-                    seen_keys.add(cte_key)
-                all_cte_data.append(data)
-
-        # Ambas devem ser adicionadas pois chave vazia não é rastreada
-        assert len(all_cte_data) == 2
-        assert len(seen_keys) == 0
-
-    def test_three_unique_keys_all_kept(self):
-        """Três chaves distintas devem resultar em três registros."""
-        seen_keys: set = set()
-        all_cte_data = []
-
-        entries = [
-            {"chv_cte_Id": "11111111111111111111111111111111111111111111"},
-            {"chv_cte_Id": "22222222222222222222222222222222222222222222"},
-            {"chv_cte_Id": "33333333333333333333333333333333333333333333"},
-        ]
-
-        for data in entries:
-            cte_key = data.get("chv_cte_Id", "")
-            if cte_key and cte_key in seen_keys:
-                pass
-            else:
-                if cte_key:
-                    seen_keys.add(cte_key)
-                all_cte_data.append(data)
-
-        assert len(all_cte_data) == 3
-        assert len(seen_keys) == 3
-
-
-class TestEventDeduplication:
-    """Simula a lógica de deduplicação de Eventos (baseada em tupla composta)."""
-
-    def test_duplicate_event_tuple_is_skipped(self):
-        """Evento com a mesma (chave, tipo, data, detalhe) → descartado."""
-        seen_event_keys: set = set()
-        all_event_data = []
-        duplicate_count = 0
-
-        entries = [
-            {
-                "Chave de Acesso (Referência)": "35250312345678000195570010000012341000012340",
-                "Tipo de Evento": "Cancelamento",
-                "Data do Evento": "2025-03-16T14:00:00-03:00",
-                "Detalhes / Justificativa": "Erro na emissao",
-            },
-            {
-                "Chave de Acesso (Referência)": "35250312345678000195570010000012341000012340",
-                "Tipo de Evento": "Cancelamento",
-                "Data do Evento": "2025-03-16T14:00:00-03:00",
-                "Detalhes / Justificativa": "Erro na emissao",
-            },
-        ]
-
-        for data in entries:
-            event_key = (
-                data.get("Chave de Acesso (Referência)", ""),
-                data.get("Tipo de Evento", ""),
-                data.get("Data do Evento", ""),
-                data.get("Detalhes / Justificativa", ""),
+            strategy.process_result_data(
+                data, DataType.CTE, all_main_data, all_event_data, 
+                seen_main_keys, seen_event_keys
             )
-            if event_key in seen_event_keys:
-                duplicate_count += 1
-            else:
-                seen_event_keys.add(event_key)
-                all_event_data.append(data)
 
-        assert len(all_event_data) == 1
-        assert duplicate_count == 1
+        assert len(all_main_data) == 2
+        assert len(seen_main_keys) == 0
 
-    def test_same_key_different_type_is_not_duplicate(self):
-        """Mesma chave com tipo de evento diferente → são registros distintos."""
-        seen_event_keys: set = set()
+
+class TestNfeStrategyDeduplication:
+    """Valida a lógica de deduplicação na NFeStrategy (por item)."""
+
+    def test_duplicate_nfe_item_is_skipped(self):
+        """Mesmo Id com mesmo nItem deve ser descartado."""
+        strategy = NFeStrategy()
+        seen_main_keys: set = set()
+        all_main_data = []
         all_event_data = []
+        seen_event_keys: set = set()
 
+        # NFe Parser retorna uma lista de dicionários
         entries = [
-            {
-                "Chave de Acesso (Referência)": "35250312345678000195570010000012341000012340",
-                "Tipo de Evento": "Cancelamento",
-                "Data do Evento": "2025-03-16T14:00:00-03:00",
-                "Detalhes / Justificativa": "Motivo A",
-            },
-            {
-                "Chave de Acesso (Referência)": "35250312345678000195570010000012341000012340",
-                "Tipo de Evento": "Carta de Correção (CC-e)",
-                "Data do Evento": "2025-03-17T09:00:00-03:00",
-                "Detalhes / Justificativa": "[ide | UFIni -> MG]",
-            },
+            [{"chv_nfe_Id": "NFe123", "nItem_nItem": "1"}],
+            [{"chv_nfe_Id": "NFe123", "nItem_nItem": "1"}], # Duplicado
         ]
 
+        dup_count = 0
         for data in entries:
-            event_key = (
-                data.get("Chave de Acesso (Referência)", ""),
-                data.get("Tipo de Evento", ""),
-                data.get("Data do Evento", ""),
-                data.get("Detalhes / Justificativa", ""),
+            dup_count += strategy.process_result_data(
+                data, DataType.NFE, all_main_data, all_event_data, 
+                seen_main_keys, seen_event_keys
             )
-            if event_key in seen_event_keys:
-                pass
-            else:
-                seen_event_keys.add(event_key)
-                all_event_data.append(data)
 
-        assert len(all_event_data) == 2
+        assert len(all_main_data) == 1
+        assert dup_count == 1
+
+    def test_different_items_same_nfe_are_kept(self):
+        """Mesmo Id com nItems diferentes → OK."""
+        strategy = NFeStrategy()
+        seen_main_keys: set = set()
+        all_main_data = []
+        all_event_data = []
+        seen_event_keys: set = set()
+
+        entries = [
+            [{"chv_nfe_Id": "NFe123", "nItem_nItem": "1"}, 
+             {"chv_nfe_Id": "NFe123", "nItem_nItem": "2"}]
+        ]
+
+        dup_count = 0
+        for data in entries:
+            dup_count += strategy.process_result_data(
+                data, DataType.NFE, all_main_data, all_event_data, 
+                seen_main_keys, seen_event_keys
+            )
+
+        assert len(all_main_data) == 2
+        assert dup_count == 0
+        assert len(seen_main_keys) == 2
+
+
+class TestEventDeduplicationViaStrategy:
+    """Valida que ambas as estratégias deduplicam eventos da mesma forma."""
+
+    def test_event_deduplication(self):
+        for strategy in [CTeStrategy(), NFeStrategy()]:
+            seen_main_keys: set = set()
+            all_main_data = []
+            all_event_data = []
+            seen_event_keys: set = set()
+
+            data = {
+                "Chave de Acesso (Referência)": "KEY123",
+                "Tipo de Evento": "Cancelamento",
+                "Data do Evento": "2025",
+                "Detalhes / Justificativa": "Motivo"
+            }
+
+            # Primeira vez
+            d1 = strategy.process_result_data(data, DataType.EVENT, all_main_data, 
+                                              all_event_data, seen_main_keys, seen_event_keys)
+            # Segunda vez
+            d2 = strategy.process_result_data(data, DataType.EVENT, all_main_data, 
+                                              all_event_data, seen_main_keys, seen_event_keys)
+
+            assert len(all_event_data) == 1
+            assert d1 == 0
+            assert d2 == 1
+            assert len(seen_event_keys) == 1
