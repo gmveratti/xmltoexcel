@@ -109,12 +109,15 @@ class ProcessingPipeline:
                     break
 
                 if worker_result and worker_result.result:
-                    if worker_result.result.data_type == DataType.IGNORE:
+                    data = worker_result.result.data
+                    data_type = worker_result.result.data_type
+
+                    if data_type == DataType.IGNORE:
                         ignored_count += 1
-                    elif worker_result.result.data is not None:
+                    elif data is not None:
                         duplicate_count += strategy.process_result_data(
-                            worker_result.result.data,
-                            worker_result.result.data_type,
+                            data,
+                            data_type,
                             all_main_data,
                             all_event_data,
                             seen_main_keys,
