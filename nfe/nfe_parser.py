@@ -10,7 +10,8 @@ import xml.etree.ElementTree as ET
 from typing import Dict, Any, List, Optional
 
 from core.parsers.base_parser import BaseXMLParser
-from nfe.nfe_constants import NFE_NAMESPACE
+from core.constants import SKIP_COLS
+from nfe.nfe_constants import NFE_NAMESPACE, NFE_HEADERS, NFE_GRAY_COLS
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class NFeParser(BaseXMLParser):
 
     def extract_data(self) -> Optional[List[Dict[str, Any]]]:
         """
-        Extrai dados da NF-e aplicando flatten por produto.
+        Extrai dados da NF-e aplicando flatten por produto via loop genérico.
 
         Returns:
             Lista de dicts (um por <det>), ou None se o XML não for NF-e.
@@ -35,8 +36,8 @@ class NFeParser(BaseXMLParser):
         if inf_nfe is None:
             return None
 
-        # Extrai chave de acesso mantendo o prefixo "NFe" conforme padrão fiscal
-        chave = inf_nfe.get("Id", "")
+        # Extrai chave de acesso removendo o prefixo "NFe"
+        chave = inf_nfe.get("Id", "").replace("NFe", "")
 
         # 2. Monta o dicionário base com os dados gerais da nota (replicados em cada linha)
         base_data = self._extract_base_data(inf_nfe, chave)
@@ -61,160 +62,28 @@ class NFeParser(BaseXMLParser):
     # ------------------------------------------------------------------
 
     def _extract_base_data(self, inf_nfe: ET.Element, chave: str) -> Dict[str, Any]:
-        """Extrai os campos que se repetem em todas as linhas de produto."""
-        data: Dict[str, Any] = {
-            "NFe": "",
-            "chv_nfe_Id": chave,
-        }
+        """Extrai os campos que se repetem em todas as linhas de produto via loop genérico."""
+        data: Dict[str, Any] = {header: "" for header in NFE_HEADERS}
+        data["chv_nfe_Id"] = chave
 
-        self._extract_ide(inf_nfe, data)
-        self._extract_emit(inf_nfe, data)
-        self._extract_dest(inf_nfe, data)
-        self._extract_total(inf_nfe, data)
-        self._extract_transp(inf_nfe, data)
-        self._extract_cobr(inf_nfe, data)
-        self._extract_inf_adic(inf_nfe, data)
+        for header in NFE_HEADERS:
+            if header in NFE_GRAY_COLS or header in SKIP_COLS:
+                continue
 
-        # Separadores cinza (sempre vazios — existem só para formatação)
-        data["NFeITEM"] = ""
+            # Ao chegar em dados de itens, paramos a extração de base_data
+            if header == "NFeITEM":
+                break
+
+            path_parts = header.split("_")
+            curr_node = inf_nfe
+            for part in path_parts:
+                curr_node = self._search_tag(curr_node, part)
+                if curr_node is None:
+                    break
+            if curr_node is not None:
+                data[header] = self._safe_text(curr_node)
 
         return data
-
-    def _extract_ide(self, inf_nfe: ET.Element, data: Dict[str, Any]) -> None:
-        """Extrai bloco <ide> — Identificação da NF-e."""
-        data["ide"] = ""
-        ide = inf_nfe.find("ns:ide", _NS)
-        if ide is None:
-            return
-        _FIELDS = [
-            "cUF", "cNF", "natOp", "mod", "serie", "nNF", "dhEmi",
-            "tpNF", "idDest", "cMunFG", "tpImp", "tpEmis", "cDV",
-            "tpAmb", "finNFe", "indFinal", "indPres", "indIntermed",
-            "procEmi", "verProc",
-        ]
-        for field in _FIELDS:
-            node = ide.find(f"ns:{field}", _NS)
-            data[f"ide_{field}"] = self._safe_text(node)
-
-    def _extract_emit(self, inf_nfe: ET.Element, data: Dict[str, Any]) -> None:
-        """Extrai bloco <emit> — Emitente."""
-        data["emit"] = ""
-        emit = inf_nfe.find("ns:emit", _NS)
-        if emit is None:
-            return
-
-        for field in ("CNPJ", "xNome", "xFant"):
-            node = emit.find(f"ns:{field}", _NS)
-            data[f"emit_{field}"] = self._safe_text(node)
-
-        # Endereço do emitente
-        data["emit_enderEmit"] = ""
-        ender = emit.find("ns:enderEmit", _NS)
-        if ender is not None:
-            for field in ("xLgr", "nro", "xCpl", "xBairro", "cMun", "xMun", "UF", "CEP", "cPais", "xPais", "fone"):
-                node = ender.find(f"ns:{field}", _NS)
-                data[f"emit_enderEmit_{field}"] = self._safe_text(node)
-
-        for field in ("IE", "CRT"):
-            node = emit.find(f"ns:{field}", _NS)
-            data[f"emit_{field}"] = self._safe_text(node)
-
-    def _extract_dest(self, inf_nfe: ET.Element, data: Dict[str, Any]) -> None:
-        """Extrai bloco <dest> — Destinatário."""
-        data["dest"] = ""
-        dest = inf_nfe.find("ns:dest", _NS)
-        if dest is None:
-            return
-
-        for field in ("CNPJ", "CPF", "xNome"):
-            node = dest.find(f"ns:{field}", _NS)
-            data[f"dest_{field}"] = self._safe_text(node)
-
-        # Endereço do destinatário
-        data["dest_enderDest"] = ""
-        ender = dest.find("ns:enderDest", _NS)
-        if ender is not None:
-            for field in ("xLgr", "nro", "xCpl", "xBairro", "cMun", "xMun", "UF", "CEP", "cPais", "xPais", "fone"):
-                node = ender.find(f"ns:{field}", _NS)
-                data[f"dest_enderDest_{field}"] = self._safe_text(node)
-
-        for field in ("indIEDest", "IE"):
-            node = dest.find(f"ns:{field}", _NS)
-            data[f"dest_{field}"] = self._safe_text(node)
-
-    def _extract_total(self, inf_nfe: ET.Element, data: Dict[str, Any]) -> None:
-        """Extrai bloco <total><ICMSTot> — Totalizadores da NF-e."""
-        data["total"] = ""
-        data["total_ICMSTot"] = ""
-        total = inf_nfe.find("ns:total", _NS)
-        if total is None:
-            return
-        icms_tot = total.find("ns:ICMSTot", _NS)
-        if icms_tot is None:
-            return
-
-        _FIELDS = [
-            "vBC", "vICMS", "vICMSDeson", "vFCPUFDest", "vICMSUFDest",
-            "vICMSUFRemet", "vBCST", "vST", "vProd", "vFrete", "vSeg",
-            "vDesc", "vII", "vIPI", "vPIS", "vCOFINS", "vOutro", "vNF",
-            "vTotTrib", "vFCP", "vFCPST", "vFCPSTRet", "vIPIDevol",
-        ]
-        for field in _FIELDS:
-            node = icms_tot.find(f"ns:{field}", _NS)
-            data[f"total_ICMSTot_{field}"] = self._safe_text(node)
-
-    def _extract_transp(self, inf_nfe: ET.Element, data: Dict[str, Any]) -> None:
-        """Extrai bloco <transp> — Transportador."""
-        data["transp"] = ""
-        transp = inf_nfe.find("ns:transp", _NS)
-        if transp is None:
-            return
-
-        for field in ("modFrete",):
-            node = transp.find(f"ns:{field}", _NS)
-            data[f"transp_{field}"] = self._safe_text(node)
-
-        # Dados da transportadora (dentro de <transporta>)
-        transporta = transp.find("ns:transporta", _NS)
-        if transporta is not None:
-            for field in ("CNPJ", "xNome", "IE", "xEnder", "xMun", "UF"):
-                node = transporta.find(f"ns:{field}", _NS)
-                data[f"transp_{field}"] = self._safe_text(node)
-        else:
-            for field in ("CNPJ", "xNome", "IE", "xEnder", "xMun", "UF"):
-                data[f"transp_{field}"] = ""
-
-    def _extract_cobr(self, inf_nfe: ET.Element, data: Dict[str, Any]) -> None:
-        """Extrai bloco <cobr><fat> — Fatura/Cobrança."""
-        data["cobr"] = ""
-        data["cobr_fat"] = ""
-        cobr = inf_nfe.find("ns:cobr", _NS)
-        if cobr is None:
-            for field in ("nFat", "vOrig", "vDesc", "vLiq"):
-                data[f"cobr_fat_{field}"] = ""
-            return
-
-        fat = cobr.find("ns:fat", _NS)
-        if fat is not None:
-            for field in ("nFat", "vOrig", "vDesc", "vLiq"):
-                node = fat.find(f"ns:{field}", _NS)
-                data[f"cobr_fat_{field}"] = self._safe_text(node)
-        else:
-            for field in ("nFat", "vOrig", "vDesc", "vLiq"):
-                data[f"cobr_fat_{field}"] = ""
-
-    def _extract_inf_adic(self, inf_nfe: ET.Element, data: Dict[str, Any]) -> None:
-        """Extrai bloco <infAdic> — Informações adicionais."""
-        data["infAdic"] = ""
-        inf_adic = inf_nfe.find("ns:infAdic", _NS)
-        if inf_adic is None:
-            data["infAdic_infAdFisco"] = ""
-            data["infAdic_infCpl"] = ""
-            return
-
-        for field in ("infAdFisco", "infCpl"):
-            node = inf_adic.find(f"ns:{field}", _NS)
-            data[f"infAdic_{field}"] = self._safe_text(node)
 
     # ------------------------------------------------------------------
     # Extração dos dados específicos de cada item (det)

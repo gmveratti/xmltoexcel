@@ -31,7 +31,7 @@ class ArchiveHandler:
         if not os.path.exists(archive_path):
             raise FileNotFoundError(f"Caminho não encontrado: {archive_path}")
         self.archive_path = archive_path
-        self.temp_dir = tempfile.mkdtemp(prefix="cte_extraction_")
+        self.temp_dir = tempfile.mkdtemp(prefix="xmltoexcel_extraction_")
 
     def __enter__(self):
         return self

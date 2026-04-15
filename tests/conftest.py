@@ -10,6 +10,7 @@ import pytest
 import xml.etree.ElementTree as ET
 
 NS = "http://www.portalfiscal.inf.br/cte"
+NS_NFE = "http://www.portalfiscal.inf.br/nfe"
 
 # ==================== CT-e Fixtures ====================
 
@@ -284,6 +285,173 @@ EVENT_UNKNOWN_CODE_XML = f"""\
 </procEventoCTe>"""
 
 
+# ==================== NF-e Fixtures ====================
+
+VALID_NFE_XML = f"""\
+<nfeProc xmlns="{NS_NFE}" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe35250412345678000195550010000012341000012340" versao="4.00">
+      <ide>
+        <cUF>35</cUF>
+        <cNF>00001234</cNF>
+        <natOp>VENDA DE MERCADORIA</natOp>
+        <mod>55</mod>
+        <serie>1</serie>
+        <nNF>1234</nNF>
+        <dhEmi>2025-04-10T10:00:00-03:00</dhEmi>
+        <tpNF>1</tpNF>
+        <idDest>1</idDest>
+        <cMunFG>3550308</cMunFG>
+        <tpImp>1</tpImp>
+        <tpEmis>1</tpEmis>
+        <cDV>0</cDV>
+        <tpAmb>1</tpAmb>
+        <finNFe>1</finNFe>
+        <indFinal>1</indFinal>
+        <indPres>1</indPres>
+        <procEmi>0</procEmi>
+        <verProc>4.0</verProc>
+      </ide>
+      <emit>
+        <CNPJ>12345678000195</CNPJ>
+        <xNome>EMPRESA EMISSORA LTDA</xNome>
+        <xFant>EMISSORA</xFant>
+        <enderEmit>
+          <xLgr>RUA TESTE</xLgr>
+          <nro>100</nro>
+          <xBairro>CENTRO</xBairro>
+          <cMun>3550308</cMun>
+          <xMun>SAO PAULO</xMun>
+          <UF>SP</UF>
+          <CEP>01001000</CEP>
+        </enderEmit>
+        <IE>123456789</IE>
+        <CRT>3</CRT>
+      </emit>
+      <dest>
+        <CNPJ>98765432000100</CNPJ>
+        <xNome>CLIENTE DESTINATARIO SA</xNome>
+        <enderDest>
+          <xLgr>AVENIDA EXEMPLO</xLgr>
+          <nro>500</nro>
+          <xBairro>INDUSTRIAL</xBairro>
+          <cMun>3106200</cMun>
+          <xMun>BELO HORIZONTE</xMun>
+          <UF>MG</UF>
+          <CEP>30123456</CEP>
+        </enderDest>
+        <indIEDest>1</indIEDest>
+        <IE>987654321</IE>
+      </dest>
+      <det nItem="1">
+        <prod>
+          <cProd>P001</cProd>
+          <xProd>PRODUTO A</xProd>
+          <NCM>12345678</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>UN</uCom>
+          <qCom>10.0000</qCom>
+          <vUnCom>50.0000</vUnCom>
+          <vProd>500.00</vProd>
+          <indTot>1</indTot>
+        </prod>
+        <imposto>
+          <vTotTrib>50.00</vTotTrib>
+          <ICMS>
+            <ICMS00>
+              <orig>0</orig>
+              <CST>00</CST>
+              <modBC>3</modBC>
+              <vBC>500.00</vBC>
+              <pICMS>18.00</pICMS>
+              <vICMS>90.00</vICMS>
+            </ICMS00>
+          </ICMS>
+        </imposto>
+      </det>
+      <det nItem="2">
+        <prod>
+          <cProd>P002</cProd>
+          <xProd>PRODUTO B</xProd>
+          <NCM>87654321</NCM>
+          <CFOP>5102</CFOP>
+          <uCom>UN</uCom>
+          <qCom>5.0000</qCom>
+          <vUnCom>100.0000</vUnCom>
+          <vProd>500.00</vProd>
+          <indTot>1</indTot>
+        </prod>
+        <imposto>
+          <ICMS>
+            <ICMS00>
+              <orig>0</orig>
+              <CST>00</CST>
+              <vBC>500.00</vBC>
+              <pICMS>18.00</pICMS>
+              <vICMS>90.00</vICMS>
+            </ICMS00>
+          </ICMS>
+        </imposto>
+      </det>
+      <total>
+        <ICMSTot>
+          <vBC>1000.00</vBC>
+          <vICMS>180.00</vICMS>
+          <vProd>1000.00</vProd>
+          <vNF>1000.00</vNF>
+        </ICMSTot>
+      </total>
+      <transp>
+        <modFrete>0</modFrete>
+        <transporta>
+          <CNPJ>11122233000144</CNPJ>
+          <xNome>TRANSPORTES EXPRESSO</xNome>
+        </transporta>
+      </transp>
+    </infNFe>
+  </NFe>
+</nfeProc>"""
+
+INVALID_NFE_XML = f"""\
+<nfeProc xmlns="{NS_NFE}">
+  <protNFe>
+    <infProt>
+      <nProt>135250000012345</nProt>
+    </infProt>
+  </protNFe>
+</nfeProc>"""
+
+EVENT_NFE_CANCELAMENTO_XML = f"""\
+<procEventoNFe xmlns="{NS_NFE}" versao="1.00">
+  <evento>
+    <infEvento>
+      <tpEvento>110111</tpEvento>
+      <chNFe>35250412345678000195550010000012341000012340</chNFe>
+      <dhEvento>2025-04-11T15:00:00-03:00</dhEvento>
+      <detEvento versao="1.00">
+        <descEvento>Cancelamento</descEvento>
+        <xJust>Erro de digitacao nos itens</xJust>
+      </detEvento>
+    </infEvento>
+  </evento>
+</procEventoNFe>"""
+
+EVENT_NFE_CCE_XML = f"""\
+<procEventoNFe xmlns="{NS_NFE}" versao="1.00">
+  <evento>
+    <infEvento>
+      <tpEvento>110110</tpEvento>
+      <chNFe>35250412345678000195550010000012341000012340</chNFe>
+      <dhEvento>2025-04-12T09:30:00-03:00</dhEvento>
+      <detEvento versao="1.00">
+        <descEvento>Carta de Correcao</descEvento>
+        <xCorrecao>Alteracao do endereco de entrega para o numero 200</xCorrecao>
+      </detEvento>
+    </infEvento>
+  </evento>
+</procEventoNFe>"""
+
+
 # ==================== Pytest Fixtures ====================
 
 @pytest.fixture
@@ -350,3 +518,27 @@ def event_desacordo_root() -> ET.Element:
 def event_unknown_code_root() -> ET.Element:
     """Evento com código desconhecido (999999)."""
     return ET.fromstring(EVENT_UNKNOWN_CODE_XML)
+
+
+@pytest.fixture
+def nfe_root() -> ET.Element:
+    """XML de NF-e válida com 2 itens."""
+    return ET.fromstring(VALID_NFE_XML)
+
+
+@pytest.fixture
+def nfe_invalid_root() -> ET.Element:
+    """XML NF-e sem <infNFe>."""
+    return ET.fromstring(INVALID_NFE_XML)
+
+
+@pytest.fixture
+def event_nfe_cancelamento_root() -> ET.Element:
+    """Evento de Cancelamento NF-e (110111)."""
+    return ET.fromstring(EVENT_NFE_CANCELAMENTO_XML)
+
+
+@pytest.fixture
+def event_nfe_cce_root() -> ET.Element:
+    """Evento de CC-e NF-e (110110)."""
+    return ET.fromstring(EVENT_NFE_CCE_XML)

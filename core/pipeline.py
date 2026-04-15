@@ -106,6 +106,7 @@ class ProcessingPipeline:
 
             for worker_result in results:
                 if cancel_event and cancel_event.is_set():
+                    executor.shutdown(wait=False, cancel_futures=True)
                     break
 
                 if worker_result and worker_result.result:

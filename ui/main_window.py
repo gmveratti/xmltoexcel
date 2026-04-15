@@ -18,7 +18,7 @@ from core.pipeline import ProcessingPipeline
 logger = logging.getLogger(__name__)
 
 
-class CTetoExcelApp:
+class XMLtoExcelApp:
     def __init__(self, root):
         self.root = root
         self.root.title(WINDOW_TITLE)

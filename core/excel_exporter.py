@@ -99,7 +99,7 @@ class ExcelExporter:
                     try:
                         dt_obj = datetime.fromisoformat(raw_val).replace(tzinfo=None)
                         cell.value = dt_obj
-                        cell.number_format = "DD/MM/YYYY HH:MM:SS"
+                        cell.number_format = "DD/MM/YYYY HH:mm:SS"
                     except ValueError:
                         cell.value = raw_val
                         cell.number_format = "@"
