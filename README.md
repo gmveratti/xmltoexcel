@@ -66,4 +66,10 @@ Para ambos os tipos, se houver arquivos de **Cancelamento** ou **Carta de Corre�
 1. **Strategy Pattern**: Arquitetura modular que permite processar diferentes tipos de documentos sem acoplamento.
 2. **Multiprocessamento**: Distribui a carga de trabalho por todos os núcleos da CPU.
 3. **Memória O(1)**: Exportação via *Streaming* direto para o disco rígido, permitindo gerar planilhas gigantes sem estourar a memória RAM do computador.
-4. **Sandbox**: Todos os arquivos são processados em uma área temporária isolada, garantindo a integridade dos seus dados originais.
+## ⚖️ Licença
+
+Este projeto é distribuído sob uma licença **Source Available**:
+- **Uso Livre e Profissional**: Você pode baixar, usar em casa ou no trabalho e modificar o código para suas necessidades.
+- **Proibição de Revenda**: É estritamente proibida a revenda ou comercialização deste software, código-fonte ou binários por terceiros.
+
+Para mais detalhes, consulte o arquivo [LICENSE](LICENSE).
